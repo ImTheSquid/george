@@ -1,0 +1,17 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+deploy/tranquil/config.toml
+
+# Node / build
+node_modules/
+dist/
+.output/
+.svelte-kit/
+*.log
+
+# Local data
+*.sqlite
+*.sqlite-*
+curius-export*.json

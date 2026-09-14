@@ -1,0 +1,26 @@
+# Copy to config.toml (gitignored) and fill in secrets:
+#   openssl rand -base64 48   (once per secret)
+
+[server]
+hostname = "pds.george.jackhogan.me"
+# Handles are <username>.george.jackhogan.me, served by nginx wildcard -> this PDS.
+user_handle_domains = ["george.jackhogan.me"]
+# nginx terminates TLS; no Caddy on-demand endpoint.
+enable_caddy_on_demand_tls = false
+# Invite-only instance: operator mints codes in the admin panel / logs.
+invite_code_required = true
+# Passkey-only accounts have no comms channel; without this they cannot log in
+# or write records. Safe only because signup is invite-gated.
+disable_account_verification_gate = true
+contact_email = "jackhogan11@gmail.com"
+
+[database]
+url = "postgres://tranquil_pds:CHANGE-ME-PG-PASSWORD@db:5432/pds"
+
+[secrets]
+jwt_secret = "CHANGE-ME"
+dpop_secret = "CHANGE-ME"
+master_key = "CHANGE-ME"
+
+[storage]
+path = "/var/lib/tranquil-pds/blobs"
