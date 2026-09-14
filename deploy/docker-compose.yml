@@ -1,6 +1,24 @@
-# Tranquil PDS for george. TLS is terminated by the host nginx (see nginx/).
-# Image is built from a Tranquil checkout: see README.md.
+# george app + Tranquil PDS. TLS is terminated by the host nginx (see nginx/).
+# Tranquil's image is built from a checkout: see README.md.
 services:
+  george:
+    build:
+      context: ../src
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    env_file: ./george.env
+    environment:
+      DATABASE_URL: /data/george.db
+      APP_URL: https://george.jackhogan.me
+      HOST_HEADER: x-forwarded-host
+      PROTOCOL_HEADER: x-forwarded-proto
+      ADDRESS_HEADER: X-Forwarded-For
+      XFF_DEPTH: "1"
+    ports:
+      - "127.0.0.1:3031:3000"
+    volumes:
+      - george_data:/data
+
   tranquil-pds:
     image: tranquil-pds:local
     restart: unless-stopped
@@ -45,6 +63,7 @@ secrets:
     file: ./tranquil/pg_password
 
 volumes:
+  george_data:
   postgres_data:
   blob_data:
   store_data:

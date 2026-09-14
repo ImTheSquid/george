@@ -4,6 +4,7 @@
 !.env.example
 deploy/tranquil/config.toml
 deploy/tranquil/pg_password
+deploy/george.env
 
 # Node / build
 node_modules/
