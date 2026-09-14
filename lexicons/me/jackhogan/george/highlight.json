@@ -1,0 +1,41 @@
+{
+  "lexicon": 1,
+  "id": "me.jackhogan.george.highlight",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A text highlight on a web page, anchored by a W3C TextQuoteSelector.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["url", "selector", "createdAt"],
+        "properties": {
+          "url": { "type": "string", "format": "uri", "maxLength": 2048, "description": "Normalized URL of the page." },
+          "link": { "type": "ref", "ref": "com.atproto.repo.strongRef", "description": "The author's link record for this URL, if any." },
+          "selector": { "type": "ref", "ref": "#textQuoteSelector" },
+          "position": { "type": "ref", "ref": "#textPositionSelector" },
+          "note": { "type": "string", "maxGraphemes": 3000, "maxLength": 30000, "description": "Author's comment on the highlight." },
+          "createdAt": { "type": "string", "format": "datetime" }
+        }
+      }
+    },
+    "textQuoteSelector": {
+      "type": "object",
+      "required": ["exact"],
+      "properties": {
+        "exact": { "type": "string", "maxGraphemes": 1500, "maxLength": 15000 },
+        "prefix": { "type": "string", "maxGraphemes": 150, "maxLength": 1500 },
+        "suffix": { "type": "string", "maxGraphemes": 150, "maxLength": 1500 }
+      }
+    },
+    "textPositionSelector": {
+      "type": "object",
+      "description": "Character offsets into the page's text content; a hint, not authoritative.",
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

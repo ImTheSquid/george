@@ -1,0 +1,14 @@
+{
+  "name": "george",
+  "private": true,
+  "license": "MIT",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "gen": "pnpm --filter @george/lexicon gen",
+    "test": "pnpm -r --if-present test",
+    "check": "pnpm -r --if-present check"
+  }
+}

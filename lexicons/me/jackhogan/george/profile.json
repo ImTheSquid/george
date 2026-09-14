@@ -1,0 +1,20 @@
+{
+  "lexicon": 1,
+  "id": "me.jackhogan.george.profile",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "Profile shown in george. Single record keyed 'self'.",
+      "key": "literal:self",
+      "record": {
+        "type": "object",
+        "properties": {
+          "displayName": { "type": "string", "maxGraphemes": 64, "maxLength": 640 },
+          "description": { "type": "string", "maxGraphemes": 256, "maxLength": 2560 },
+          "website": { "type": "string", "format": "uri", "maxLength": 2048 },
+          "curiusUserLink": { "type": "string", "maxLength": 100, "description": "Curius profile slug this account imported from, for reconnecting friends." }
+        }
+      }
+    }
+  }
+}
