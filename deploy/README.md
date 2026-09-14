@@ -43,5 +43,16 @@ docker compose up -d
 docker compose logs tranquil-pds | grep -i invite       # first invite code
 ```
 
-Then open https://pds.jackhogan.me/app/register and register with handle + passkey + invite code.
-Admin panel (invite codes): https://pds.jackhogan.me/app/admin
+Invite codes are minted in the PDS admin panel: https://pds.jackhogan.me/app/admin
+
+## 5. george app
+
+The compose file builds the app from `../src` (an rsync/checkout of this repo next to `deploy/`).
+
+```sh
+cd apps/web && pnpm keygen        # once; paste into deploy/george.env as OAUTH_PRIVATE_KEYS=[...]
+rsync -a --exclude node_modules --exclude .svelte-kit --exclude build --exclude .git ./ server:~/george/src/
+docker compose build george && docker compose up -d george
+```
+
+Signup lives at https://pds.jackhogan.me/signup (served by george; see nginx/george.conf for why).
