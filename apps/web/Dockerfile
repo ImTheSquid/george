@@ -1,6 +1,8 @@
 # Build from the repo root: docker build -f apps/web/Dockerfile .
 FROM node:22-slim AS build
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+# better-sqlite3 falls back to node-gyp when no prebuilt binary is found
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 WORKDIR /src
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
