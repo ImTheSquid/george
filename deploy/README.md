@@ -1,23 +1,24 @@
 # Deploying george
 
-Hosts: app `george.jackhogan.me` (127.0.0.1:3031), PDS `pds.george.jackhogan.me` and handles `*.george.jackhogan.me` (127.0.0.1:3030). Host nginx terminates TLS.
+Hosts: app `george.jackhogan.me` (127.0.0.1:3031); PDS `pds.jackhogan.me` and handles `*.george.jackhogan.me` (127.0.0.1:3030). The PDS is a general atproto host, not tied to george — hence its own name. Host nginx terminates TLS.
 
-## 1. DNS (Cloudflare, proxy OFF for all three)
+## 1. DNS (Cloudflare, proxy OFF for all)
 
 | Type | Name | Content |
 |---|---|---|
-| A | `george` | server IP |
-| A | `pds.george` | server IP |
-| A | `*.george` | server IP |
+| CNAME | `george` | `home.jackhogan.me` |
+| CNAME | `*.george` | `home.jackhogan.me` |
+| CNAME | `pds` | `home.jackhogan.me` |
 
-Proxy must be off: Cloudflare's free edge cert does not cover `*.george.jackhogan.me`.
+Proxy must be off: Cloudflare's free edge cert does not cover `*.george.jackhogan.me`, and proxying the PDS would cap blob uploads and websocket lifetimes.
 
 ## 2. Certificate (once; renews via existing certbot timer)
 
 ```sh
 sudo certbot certonly --dns-cloudflare \
   --dns-cloudflare-credentials /home/jack/.secrets/certbot/cloudflare.ini \
-  -d george.jackhogan.me -d '*.george.jackhogan.me'
+  --cert-name george.jackhogan.me \
+  -d george.jackhogan.me -d '*.george.jackhogan.me' -d pds.jackhogan.me
 ```
 
 ## 3. nginx
@@ -42,4 +43,5 @@ docker compose up -d
 docker compose logs tranquil-pds | grep -i invite       # first invite code
 ```
 
-Then open https://pds.george.jackhogan.me, register with handle + passkey + invite code.
+Then open https://pds.jackhogan.me/app/register and register with handle + passkey + invite code.
+Admin panel (invite codes): https://pds.jackhogan.me/app/admin

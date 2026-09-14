@@ -2,7 +2,7 @@
 #   openssl rand -base64 48   (once per secret)
 
 [server]
-hostname = "pds.george.jackhogan.me"
+hostname = "pds.jackhogan.me"
 # Handles are <username>.george.jackhogan.me, served by nginx wildcard -> this PDS.
 user_handle_domains = ["george.jackhogan.me"]
 # nginx terminates TLS; no Caddy on-demand endpoint.
