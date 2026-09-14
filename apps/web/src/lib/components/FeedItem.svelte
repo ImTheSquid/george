@@ -1,0 +1,30 @@
+<script lang="ts">
+	import type { FeedItem } from '$lib/server/queries';
+
+	let { item }: { item: FeedItem } = $props();
+
+	const url = $derived(item.kind === 'link' ? item.link.url : item.highlight.url);
+	const host = $derived(new URL(url).hostname.replace(/^www\./, ''));
+	const when = $derived(new Date(item.createdAt).toLocaleDateString());
+	const name = $derived(item.actor.displayName ?? item.actor.handle);
+</script>
+
+<article class="item">
+	<div class="meta">
+		<a href="/u/{item.actor.handle}">{name}</a>
+		{item.kind === 'link' ? 'saved' : 'highlighted'} · {when}
+	</div>
+	{#if item.kind === 'link'}
+		<a class="title" href={item.link.url} rel="noopener">{item.link.title ?? item.link.url}</a>
+		<span class="muted">{host}</span>
+		{#if item.link.tags.length}
+			<div class="meta">{item.link.tags.join(', ')}</div>
+		{/if}
+	{:else}
+		<a class="title" href={item.highlight.url} rel="noopener">{host}</a>
+		<blockquote>{item.highlight.exact}</blockquote>
+		{#if item.highlight.note}
+			<p>{item.highlight.note}</p>
+		{/if}
+	{/if}
+</article>

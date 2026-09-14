@@ -1,0 +1,43 @@
+{
+	"name": "@george/web",
+	"private": true,
+	"version": "0.0.1",
+	"type": "module",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"prepare": "svelte-kit sync || echo ''",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"test:unit": "vitest",
+		"test": "npm run test:unit -- --run",
+		"db:generate": "drizzle-kit generate",
+		"db:studio": "drizzle-kit studio",
+		"keygen": "node scripts/keygen.mjs"
+	},
+	"devDependencies": {
+		"@sveltejs/adapter-node": "^5.5.4",
+		"@sveltejs/kit": "^2.63.0",
+		"@sveltejs/vite-plugin-svelte": "^7.1.2",
+		"@types/better-sqlite3": "^7.6.13",
+		"@types/node": "^22",
+		"drizzle-kit": "^0.31.10",
+		"svelte": "^5.56.1",
+		"svelte-check": "^4.6.0",
+		"typescript": "^6.0.3",
+		"vite": "^8.0.16",
+		"vitest": "^4.1.8"
+	},
+	"dependencies": {
+		"@atproto/api": "^0.20.44",
+		"@atproto/identity": "^0.5.0",
+		"@atproto/jwk-jose": "^0.2.0",
+		"@atproto/oauth-client-node": "^0.5.7",
+		"@atproto/sync": "^0.4.10",
+		"@george/lexicon": "workspace:*",
+		"@george/shared": "workspace:*",
+		"better-sqlite3": "^13.0.2",
+		"drizzle-orm": "^0.45.2"
+	}
+}

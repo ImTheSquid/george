@@ -1,2 +1,2 @@
 export { normalizeUrl, urlHash } from "./url";
-export { INSTANCE } from "./instance";
+export { INSTANCE, COLLECTIONS, ALL_COLLECTIONS, type Collection } from "./instance";
