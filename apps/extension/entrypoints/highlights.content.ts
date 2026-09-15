@@ -247,10 +247,10 @@ export default defineContentScript({
 
 		function layoutCards() {
 			cardsLayer.replaceChildren();
+			if (!lastInfo) return;
 			const viewportW = document.documentElement.clientWidth;
-			if (viewportW < 700 || !lastInfo) return;
 
-			const entries: { top: number; left: number; el: HTMLElement }[] = [];
+			const entries: { top: number; left: number; el: HTMLElement; below: boolean }[] = [];
 			for (const h of lastInfo.highlights) {
 				const expanded = h.highlight.id === expandedId;
 				const hasContent = !!h.highlight.note || commentsFor('highlight', h.highlight.id).length > 0;
@@ -258,17 +258,28 @@ export default defineContentScript({
 				const mark = markFor(h.highlight.id);
 				if (!mark) continue;
 				const rect = mark.getBoundingClientRect();
-				// Sit just right of the text column the highlight lives in.
+				// Prefer the gutter right of the text column; if there is none, only the expanded
+				// card is shown, placed under its highlight.
 				const block = mark.closest('p, li, blockquote, h1, h2, h3, h4, h5, h6, pre, td, article, section, div') ?? mark;
-				const left = Math.min(block.getBoundingClientRect().right + 16, viewportW - CARD_W - 8) + window.scrollX;
-				entries.push({ top: rect.top + window.scrollY, left, el: buildCard(h, expanded) });
+				const columnRight = block.getBoundingClientRect().right;
+				const gutter = columnRight + 16 + CARD_W <= viewportW - 8;
+				if (!gutter && !expanded) continue;
+				const card = buildCard(h, expanded);
+				if (gutter) {
+					entries.push({ top: rect.top + window.scrollY, left: columnRight + 16 + window.scrollX, el: card, below: false });
+				} else {
+					const w = Math.min(CARD_W, viewportW - 16);
+					card.style.width = `${w}px`;
+					const left = Math.min(Math.max(8, rect.left), viewportW - w - 8);
+					entries.push({ top: rect.bottom + 8 + window.scrollY, left: left + window.scrollX, el: card, below: true });
+				}
 			}
 
 			entries.sort((a, b) => a.top - b.top);
 			let cursor = 0;
 			for (const e of entries) {
 				cardsLayer.append(e.el);
-				const top = Math.max(e.top, cursor);
+				const top = e.below ? e.top : Math.max(e.top, cursor);
 				e.el.style.left = `${e.left}px`;
 				e.el.style.top = `${top}px`;
 				cursor = top + e.el.offsetHeight + 8;
