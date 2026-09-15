@@ -112,7 +112,7 @@ export default defineContentScript({
 		const noteView = document.createElement('div');
 		noteView.setAttribute('style', 'white-space:pre-wrap');
 		const textarea = document.createElement('textarea');
-		textarea.placeholder = 'Add a note…';
+		textarea.placeholder = 'Your note (shown with the highlight)';
 		textarea.rows = 3;
 		textarea.setAttribute('style', `${FONT};width:100%;box-sizing:border-box;padding:6px;border:1px solid #ccc;border-radius:4px;resize:vertical;background:#fff`);
 		const actions = document.createElement('div');
@@ -133,13 +133,21 @@ export default defineContentScript({
 		const replyRow = document.createElement('div');
 		replyRow.setAttribute('style', 'display:none;gap:6px');
 		const replyInput = document.createElement('input');
-		replyInput.placeholder = 'Reply…';
+		replyInput.placeholder = 'Add a comment…';
+		const status = document.createElement('div');
+		status.setAttribute('style', 'display:none;color:#c0392b;font-size:12px');
+		const showError = (e: unknown) => {
+			report(e);
+			if (stale(e)) return;
+			status.textContent = e instanceof Error ? e.message : String(e);
+			status.style.display = 'block';
+		};
 		replyInput.setAttribute('style', `${FONT};flex:1;padding:5px 6px;border:1px solid #ccc;border-radius:4px;background:#fff`);
 		const replyBtn = document.createElement('button');
 		replyBtn.textContent = 'Reply';
 		replyBtn.setAttribute('style', BTN);
 		replyRow.append(replyInput, replyBtn);
-		popover.append(who, noteView, textarea, actions, commentsBox, replyRow);
+		popover.append(who, noteView, textarea, actions, commentsBox, replyRow, status);
 		root.append(toolbar, popover);
 
 		function renderComments(h: Hl) {
@@ -177,8 +185,10 @@ export default defineContentScript({
 		}
 
 		replyBtn.addEventListener('click', async () => {
-			if (!editing || !replyInput.value.trim()) return;
+			if (!replyInput.value.trim()) return;
+			if (!editing) return showError(new Error('Lost track of the highlight; click it again.'));
 			const h = editing;
+			replyBtn.disabled = true;
 			try {
 				await api.comment({ subjectType: 'highlight', subjectId: h.highlight.id, text: replyInput.value });
 				replyInput.value = '';
@@ -186,7 +196,9 @@ export default defineContentScript({
 				const fresh = byId.get(h.highlight.id);
 				if (fresh) renderComments(fresh);
 			} catch (e) {
-				report(e);
+				showError(e);
+			} finally {
+				replyBtn.disabled = false;
 			}
 		});
 		replyInput.addEventListener('keydown', (e) => {
@@ -226,6 +238,7 @@ export default defineContentScript({
 
 		function openPopover(at: Element | Range, h: Hl | null) {
 			anchor = at;
+			status.style.display = 'none';
 			const rect = at.getBoundingClientRect();
 			editing = h;
 			const own = !h || h.mine;
@@ -293,7 +306,7 @@ export default defineContentScript({
 					await createHighlight(pending, note || undefined);
 				}
 			} catch (e) {
-				report(e);
+				return showError(e);
 			}
 			hideAll();
 		});
