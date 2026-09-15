@@ -36,6 +36,7 @@
 		<span class="muted">{host(l.url)}</span>
 		<div class="meta row">
 			<span>{new Date(l.createdAt).toLocaleDateString()}</span>
+			<a href="/link?url={encodeURIComponent(l.url)}">discuss</a>
 			{#if l.tags.length}<span>{l.tags.join(', ')}</span>{/if}
 			<form method="POST" action="?/toggleRead" use:enhance>
 				<input type="hidden" name="url" value={l.url} />

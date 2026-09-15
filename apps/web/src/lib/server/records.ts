@@ -1,8 +1,9 @@
 import { and, eq } from 'drizzle-orm';
 import { normalizeUrl, urlHash } from '@george/shared';
 import { db } from '$lib/server/db';
-import { follow, highlight, link, user } from '$lib/server/db/schema';
+import { comment, follow, highlight, link, user } from '$lib/server/db/schema';
 import { newId, now } from '$lib/server/ids';
+import { canSeeSubject } from '$lib/server/queries';
 
 export type LinkInput = {
 	url: string;
@@ -113,6 +114,25 @@ export function updateHighlightNote(userId: string, id: string, note: string | n
 		.set({ note: note?.trim() || null })
 		.where(and(eq(highlight.id, id), eq(highlight.userId, userId)))
 		.run();
+}
+
+export type CommentInput = { subjectType: 'link' | 'highlight' | 'comment'; subjectId: string; text: string };
+
+export function createComment(userId: string, input: CommentInput): string {
+	const text = input.text.trim();
+	if (!text) throw new Error('Empty comment');
+	if (text.length > 5000) throw new Error('Comment too long');
+	if (!['link', 'highlight', 'comment'].includes(input.subjectType)) throw new Error('Bad subject');
+	if (!canSeeSubject(userId, input.subjectType, input.subjectId)) throw new Error('Nothing to comment on');
+	const id = newId();
+	db.insert(comment)
+		.values({ id, userId, subjectType: input.subjectType, subjectId: input.subjectId, text, createdAt: now() })
+		.run();
+	return id;
+}
+
+export function deleteComment(userId: string, id: string): void {
+	db.delete(comment).where(and(eq(comment.id, id), eq(comment.userId, userId))).run();
 }
 
 export function followUser(userId: string, subjectId: string): void {

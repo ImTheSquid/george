@@ -33,6 +33,7 @@ export default defineContentScript({
 
 		let cleanups: (() => void)[] = [];
 		let byId = new Map<string, Hl>();
+		let lastInfo: PageInfo | null = null;
 
 		async function paintAll() {
 			for (const c of cleanups) c();
@@ -44,6 +45,7 @@ export default defineContentScript({
 				if (!(e instanceof NotConnected)) console.warn('[george]', e);
 				return;
 			}
+			lastInfo = info;
 			byId = new Map(info.highlights.map((h) => [h.highlight.id, h]));
 			for (const h of info.highlights) await paint(h);
 		}
@@ -112,8 +114,72 @@ export default defineContentScript({
 		cancelBtn.textContent = 'Cancel';
 		cancelBtn.setAttribute('style', `${BTN};background:#eee`);
 		actions.append(removeBtn, cancelBtn, saveBtn);
-		popover.append(who, noteView, textarea, actions);
+		// Comment thread on an existing highlight
+		const commentsBox = document.createElement('div');
+		commentsBox.setAttribute('style', 'display:none;flex-direction:column;gap:4px;max-height:200px;overflow:auto;border-top:1px solid #eee;padding-top:6px');
+		const replyRow = document.createElement('div');
+		replyRow.setAttribute('style', 'display:none;gap:6px');
+		const replyInput = document.createElement('input');
+		replyInput.placeholder = 'Reply…';
+		replyInput.setAttribute('style', `${FONT};flex:1;padding:5px 6px;border:1px solid #ccc;border-radius:4px;background:#fff`);
+		const replyBtn = document.createElement('button');
+		replyBtn.textContent = 'Reply';
+		replyBtn.setAttribute('style', BTN);
+		replyRow.append(replyInput, replyBtn);
+		popover.append(who, noteView, textarea, actions, commentsBox, replyRow);
 		root.append(toolbar, popover);
+
+		function renderComments(h: Hl) {
+			commentsBox.replaceChildren();
+			const all = lastInfo?.comments ?? [];
+			const walk = (type: 'highlight' | 'comment', id: string, depth: number) => {
+				for (const c of all.filter((c) => c.subjectType === type && c.subjectId === id)) {
+					const row = document.createElement('div');
+					row.setAttribute('style', `margin-left:${Math.min(depth, 4) * 10}px`);
+					const name = document.createElement('span');
+					name.setAttribute('style', 'color:#666;font-size:12px');
+					name.textContent = c.mine ? 'you' : c.user.displayName ?? c.user.username;
+					const text = document.createElement('div');
+					text.setAttribute('style', 'white-space:pre-wrap');
+					text.textContent = c.text;
+					row.append(name, text);
+					if (c.mine) {
+						const del = document.createElement('button');
+						del.textContent = 'delete';
+						del.setAttribute('style', `${FONT};color:#666;font-size:12px;background:none;border:0;padding:0 0 0 6px;cursor:pointer;text-decoration:underline`);
+						del.addEventListener('click', async () => {
+							await api.deleteComment(c.id).catch((e) => console.error('[george]', e));
+							await paintAll();
+							const fresh = byId.get(h.highlight.id);
+							if (fresh) renderComments(fresh);
+						});
+						name.append(del);
+					}
+					commentsBox.append(row);
+					walk('comment', c.id, depth + 1);
+				}
+			};
+			walk('highlight', h.highlight.id, 0);
+			commentsBox.style.display = commentsBox.childElementCount ? 'flex' : 'none';
+		}
+
+		replyBtn.addEventListener('click', async () => {
+			if (!editing || !replyInput.value.trim()) return;
+			const h = editing;
+			try {
+				await api.comment({ subjectType: 'highlight', subjectId: h.highlight.id, text: replyInput.value });
+				replyInput.value = '';
+				await paintAll();
+				const fresh = byId.get(h.highlight.id);
+				if (fresh) renderComments(fresh);
+			} catch (e) {
+				console.error('[george]', e);
+			}
+		});
+		replyInput.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter') replyBtn.click();
+			e.stopPropagation();
+		});
 
 		let pending: Range | null = null; // current selection, for new highlights
 		let editing: Hl | null = null; // existing highlight being viewed/edited
@@ -142,6 +208,9 @@ export default defineContentScript({
 			textarea.style.display = own ? 'block' : 'none';
 			saveBtn.style.display = own ? 'inline-block' : 'none';
 			removeBtn.style.display = h?.mine ? 'inline-block' : 'none';
+			replyRow.style.display = h ? 'flex' : 'none';
+			if (h) renderComments(h);
+			else commentsBox.style.display = 'none';
 			toolbar.style.display = 'none';
 			place(popover, rect, 'flex');
 			if (own) textarea.focus();
@@ -171,7 +240,7 @@ export default defineContentScript({
 			place(toolbar, range.getBoundingClientRect(), 'flex');
 		});
 
-		for (const b of [hlBtn, noteBtn, saveBtn, removeBtn, cancelBtn]) b.addEventListener('mousedown', (e) => e.preventDefault());
+		for (const b of [hlBtn, noteBtn, saveBtn, removeBtn, cancelBtn, replyBtn]) b.addEventListener('mousedown', (e) => e.preventDefault());
 
 		hlBtn.addEventListener('click', async () => {
 			if (!pending) return;

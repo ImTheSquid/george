@@ -20,12 +20,23 @@ export type Highlight = {
 	note: string | null;
 	createdAt: string;
 };
+export type Comment = {
+	id: string;
+	userId: string;
+	subjectType: 'link' | 'highlight' | 'comment';
+	subjectId: string;
+	text: string;
+	createdAt: string;
+	user: User;
+	mine: boolean;
+};
 export type PageInfo = {
 	url: string;
 	unsupported: boolean;
 	mine: Link | null;
 	friends: { user: User; link: Link }[];
 	highlights: { user: User; highlight: Highlight; mine: boolean }[];
+	comments: Comment[];
 };
 
 export class ApiError extends Error {
@@ -67,5 +78,8 @@ export const api = {
 	highlight: (input: { url: string; title?: string; exact: string; prefix?: string; suffix?: string; note?: string }) =>
 		call<{ id: string; linkId: string }>('POST', '/api/highlight', input),
 	deleteHighlight: (id: string) => call<{ ok: true }>('DELETE', `/api/highlight/${id}`),
-	setNote: (id: string, note: string | null) => call<{ ok: true }>('POST', `/api/highlight/${id}`, { note })
+	setNote: (id: string, note: string | null) => call<{ ok: true }>('POST', `/api/highlight/${id}`, { note }),
+	comment: (input: { subjectType: Comment['subjectType']; subjectId: string; text: string }) =>
+		call<{ id: string }>('POST', '/api/comment', input),
+	deleteComment: (id: string) => call<{ ok: true }>('DELETE', `/api/comment/${id}`)
 };

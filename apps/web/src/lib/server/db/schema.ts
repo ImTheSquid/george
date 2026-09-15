@@ -44,9 +44,20 @@ export const challenge = sqliteTable('challenge', {
 export const invite = sqliteTable('invite', {
 	code: text().primaryKey(),
 	createdBy: text().references(() => user.id, { onDelete: 'set null' }),
-	usedBy: text().references(() => user.id, { onDelete: 'set null' }),
+	maxUses: integer().notNull().default(1),
+	uses: integer().notNull().default(0),
 	createdAt: text().notNull(),
-	usedAt: text()
+	revokedAt: text()
+});
+
+export const inviteUse = sqliteTable('invite_use', {
+	code: text()
+		.notNull()
+		.references(() => invite.code, { onDelete: 'cascade' }),
+	userId: text()
+		.notNull()
+		.references(() => user.id, { onDelete: 'cascade' }),
+	usedAt: text().notNull()
 });
 
 // Bearer tokens for the browser extension. `hash` = sha256(token), base64url.

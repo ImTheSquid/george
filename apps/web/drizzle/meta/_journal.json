@@ -15,6 +15,20 @@
       "when": 1789450939755,
       "tag": "0001_colorful_wonder_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789451932979,
+      "tag": "0002_windy_grey_gargoyle",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1789451980729,
+      "tag": "0003_colossal_sunfire",
+      "breakpoints": true
     }
   ]
 }
