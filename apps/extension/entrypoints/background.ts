@@ -1,9 +1,13 @@
 import { browser, defineBackground } from '#imports';
-import { api, NotConnected } from '@/utils/api';
+import { api, NotConnected, type PageInfo } from '@/utils/api';
 import { getSettings, isWebUrl, setConnection } from '@/utils/settings';
-import type { Message } from '@/utils/messages';
+import type { GetPageResponse, Message } from '@/utils/messages';
 
 export default defineBackground(() => {
+	// Latest PageInfo per tab, so the popup can render before its own fetch returns.
+	const cache = new Map<number, PageInfo>();
+	browser.tabs.onRemoved.addListener((tabId) => cache.delete(tabId));
+
 	async function setBadge(tabId: number, text: string, color = '#b8860b') {
 		await browser.action.setBadgeText({ tabId, text });
 		await browser.action.setBadgeBackgroundColor({ tabId, color });
@@ -16,6 +20,7 @@ export default defineBackground(() => {
 		if (!token) return setBadge(tabId, '');
 		try {
 			const info = await api.page(url);
+			cache.set(tabId, info);
 			if (info.mine) return setBadge(tabId, '✓');
 			return setBadge(tabId, info.friends.length ? String(info.friends.length) : '', '#6877d0');
 		} catch {
@@ -63,6 +68,9 @@ export default defineBackground(() => {
 		}
 		if (msg.type === 'george:page-changed' && sender.tab?.id) {
 			return refreshBadge(sender.tab.id, sender.tab.url).then(() => ({ ok: true }));
+		}
+		if (msg.type === 'george:get-page') {
+			return Promise.resolve({ info: cache.get(msg.tabId) ?? null } satisfies GetPageResponse);
 		}
 	});
 });

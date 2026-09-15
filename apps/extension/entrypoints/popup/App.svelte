@@ -2,12 +2,13 @@
 	import { browser } from '#imports';
 	import { api, NotConnected, type PageInfo } from '@/utils/api';
 	import { getSettings, isWebUrl, setConnection, DEFAULT_APP_URL } from '@/utils/settings';
-	import type { Message } from '@/utils/messages';
+	import type { GetPageResponse, Message } from '@/utils/messages';
 
 	let appUrl = $state(DEFAULT_APP_URL);
 	let connected = $state(false);
 	let tab = $state<Browser.tabs.Tab | null>(null);
 	let info = $state<PageInfo | null>(null);
+	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let busy = $state(false);
 	let manualToken = $state('');
@@ -20,18 +21,34 @@
 		appUrl = s.appUrl;
 		connected = !!s.token;
 		tab = (await browser.tabs.query({ active: true, currentWindow: true }))[0] ?? null;
-		if (!connected || !pageUrl) return;
+		if (!connected || !pageUrl) {
+			loading = false;
+			return;
+		}
+		// Render from the background's cache first, then reconcile with the server.
+		if (tab?.id) {
+			const cached = (await browser.runtime
+				.sendMessage({ type: 'george:get-page', tabId: tab.id } satisfies Message)
+				.catch(() => null)) as GetPageResponse | null;
+			if (cached?.info && cached.info.url === pageUrl) {
+				info = cached.info;
+				loading = false;
+			}
+		}
 		try {
-			info = await api.page(pageUrl);
+			let fresh = await api.page(pageUrl);
 			// Opening the popup saves the page (Curius behaviour); the buttons then undo or refine.
-			if (!info.mine && !info.unsupported) {
+			if (!fresh.mine && !fresh.unsupported) {
 				await api.save({ url: pageUrl, title: tab?.title });
-				info = await api.page(pageUrl);
+				fresh = await api.page(pageUrl);
 				notifyPage();
 			}
+			info = fresh;
 		} catch (e) {
 			if (e instanceof NotConnected) connected = false;
 			else error = e instanceof Error ? e.message : String(e);
+		} finally {
+			loading = false;
 		}
 	}
 
@@ -93,12 +110,16 @@
 		<div class="title" title={tab?.title}>{tab?.title ?? pageUrl}</div>
 		<div class="muted">{new URL(pageUrl).hostname.replace(/^www\./, '')}</div>
 
-		{#if info?.mine}
+		{#if loading && !info}
+			<div class="row muted">Saving…</div>
+		{:else if info?.mine}
 			<div class="row">
 				<button onclick={unsave} disabled={busy}>Unsave</button>
 				<button onclick={toggleRead} disabled={busy}>{info.mine.toRead ? 'Mark read' : 'Read later'}</button>
 				<button onclick={toggleFavorite} disabled={busy}>{info.mine.favorite ? '★' : '☆'}</button>
 			</div>
+		{:else if info?.unsupported}
+			<div class="row muted">This page can't be saved.</div>
 		{:else}
 			<div class="row">
 				<button class="primary" onclick={() => save(false)} disabled={busy}>Save</button>
