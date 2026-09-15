@@ -35,16 +35,23 @@ export default defineContentScript({
 		let byId = new Map<string, Hl>();
 		let lastInfo: PageInfo | null = null;
 
+		// After an extension reload the old script lingers; its browser.* calls throw this. Not an error worth logging.
+		const stale = (e: unknown) => ctx.isInvalid || (e instanceof Error && /context invalidated/i.test(e.message));
+		const report = (e: unknown) => {
+			if (!stale(e) && !(e instanceof NotConnected)) console.warn('[george]', e);
+		};
 		async function paintAll() {
+			if (ctx.isInvalid) return;
 			for (const c of cleanups) c();
 			cleanups = [];
 			let info: PageInfo;
 			try {
 				info = await api.page(location.href);
 			} catch (e) {
-				if (!(e instanceof NotConnected)) console.warn('[george]', e);
+				report(e);
 				return;
 			}
+			if (ctx.isInvalid) return;
 			lastInfo = info;
 			byId = new Map(info.highlights.map((h) => [h.highlight.id, h]));
 			for (const h of info.highlights) await paint(h);
@@ -77,6 +84,11 @@ export default defineContentScript({
 		const root = document.createElement('div');
 		root.setAttribute('style', 'position:fixed;z-index:2147483647;top:0;left:0;width:0;height:0');
 		document.documentElement.append(root);
+		ctx.onInvalidated(() => {
+			for (const c of cleanups) c();
+			cleanups = [];
+			root.remove();
+		});
 
 		const toolbar = document.createElement('div');
 		toolbar.setAttribute('style', 'position:fixed;display:none;gap:4px;box-shadow:0 1px 4px rgba(0,0,0,.3);border-radius:4px');
@@ -148,7 +160,7 @@ export default defineContentScript({
 						del.textContent = 'delete';
 						del.setAttribute('style', `${FONT};color:#666;font-size:12px;background:none;border:0;padding:0 0 0 6px;cursor:pointer;text-decoration:underline`);
 						del.addEventListener('click', async () => {
-							await api.deleteComment(c.id).catch((e) => console.error('[george]', e));
+							await api.deleteComment(c.id).catch(report);
 							await paintAll();
 							const fresh = byId.get(h.highlight.id);
 							if (fresh) renderComments(fresh);
@@ -173,7 +185,7 @@ export default defineContentScript({
 				const fresh = byId.get(h.highlight.id);
 				if (fresh) renderComments(fresh);
 			} catch (e) {
-				console.error('[george]', e);
+				report(e);
 			}
 		});
 		replyInput.addEventListener('keydown', (e) => {
@@ -246,7 +258,7 @@ export default defineContentScript({
 			if (!pending) return;
 			const r = pending;
 			hideAll();
-			await createHighlight(r).catch((e) => console.error('[george]', e));
+			await createHighlight(r).catch(report);
 		});
 
 		noteBtn.addEventListener('click', () => {
@@ -264,14 +276,14 @@ export default defineContentScript({
 					await createHighlight(pending, note || undefined);
 				}
 			} catch (e) {
-				console.error('[george]', e);
+				report(e);
 			}
 			hideAll();
 		});
 
 		removeBtn.addEventListener('click', async () => {
 			if (!editing?.mine) return;
-			await api.deleteHighlight(editing.highlight.id).catch((e) => console.error('[george]', e));
+			await api.deleteHighlight(editing.highlight.id).catch(report);
 			hideAll();
 			await paintAll();
 			notify();
