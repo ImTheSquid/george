@@ -49,6 +49,18 @@ export const invite = sqliteTable('invite', {
 	usedAt: text()
 });
 
+// Bearer tokens for the browser extension. `hash` = sha256(token), base64url.
+export const apiToken = sqliteTable('api_token', {
+	id: text().primaryKey(),
+	userId: text()
+		.notNull()
+		.references(() => user.id, { onDelete: 'cascade' }),
+	hash: text().notNull().unique(),
+	name: text().notNull(),
+	createdAt: text().notNull(),
+	lastUsedAt: text()
+});
+
 export const session = sqliteTable('session', {
 	id: text().primaryKey(),
 	userId: text()

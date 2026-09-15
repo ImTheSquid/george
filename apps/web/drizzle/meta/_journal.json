@@ -8,6 +8,13 @@
       "when": 1789438375503,
       "tag": "0000_goofy_red_hulk",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1789450939755,
+      "tag": "0001_colorful_wonder_man",
+      "breakpoints": true
     }
   ]
 }

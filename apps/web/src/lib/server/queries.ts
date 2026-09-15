@@ -90,6 +90,35 @@ export function getFeed(userId: string, limit = 100): FeedItem[] {
 	return items.slice(0, limit);
 }
 
+export type Network = {
+	mine: LinkRow | null;
+	friends: { user: PublicUser; link: LinkRow }[];
+	highlights: { user: PublicUser; highlight: HighlightRow; mine: boolean }[];
+};
+
+/** One page as seen by `userId`: their own link, followed users' links, and all of those users' highlights. */
+export function getNetworkForUrl(userId: string, hash: string): Network {
+	const ids = [userId, ...getFollowingIds(userId)];
+	const links = db
+		.select({ link, user: publicUser })
+		.from(link)
+		.innerJoin(user, eq(user.id, link.userId))
+		.where(and(eq(link.urlHash, hash), inArray(link.userId, ids)))
+		.all();
+	const highlights = db
+		.select({ highlight, user: publicUser })
+		.from(highlight)
+		.innerJoin(user, eq(user.id, highlight.userId))
+		.where(and(eq(highlight.urlHash, hash), inArray(highlight.userId, ids)))
+		.orderBy(highlight.createdAt)
+		.all();
+	return {
+		mine: links.find((r) => r.link.userId === userId)?.link ?? null,
+		friends: links.filter((r) => r.link.userId !== userId),
+		highlights: highlights.map((r) => ({ ...r, mine: r.highlight.userId === userId }))
+	};
+}
+
 export function listUsers(limit = 500): PublicUser[] {
 	return db.select(publicUser).from(user).orderBy(user.username).limit(limit).all();
 }

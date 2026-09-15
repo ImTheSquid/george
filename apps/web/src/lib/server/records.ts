@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { normalizeUrl, urlHash } from '@george/shared';
 import { db } from '$lib/server/db';
-import { follow, link, user } from '$lib/server/db/schema';
+import { follow, highlight, link, user } from '$lib/server/db/schema';
 import { newId, now } from '$lib/server/ids';
 
 export type LinkInput = {
@@ -58,6 +58,61 @@ export async function saveLink(userId: string, input: LinkInput): Promise<string
 
 export function deleteLink(userId: string, id: string): void {
 	db.delete(link).where(and(eq(link.id, id), eq(link.userId, userId))).run();
+}
+
+export async function deleteLinkByUrl(userId: string, rawUrl: string): Promise<void> {
+	const hash = await urlHash(normalizeUrl(rawUrl));
+	db.delete(link).where(and(eq(link.userId, userId), eq(link.urlHash, hash))).run();
+}
+
+export type HighlightInput = {
+	url: string;
+	/** Page title, used if the highlight has to create the link. */
+	title?: string;
+	exact: string;
+	prefix?: string;
+	suffix?: string;
+	start?: number;
+	end?: number;
+	note?: string;
+};
+
+/** Highlighting a page saves it too (Curius behaviour). Returns the new highlight and its link id. */
+export async function createHighlight(userId: string, input: HighlightInput): Promise<{ id: string; linkId: string }> {
+	const exact = input.exact.trim();
+	if (!exact) throw new Error('Nothing selected');
+	const url = normalizeUrl(input.url);
+	const hash = await urlHash(url);
+	const linkId = await saveLink(userId, { url, title: input.title });
+	const id = newId();
+	db.insert(highlight)
+		.values({
+			id,
+			userId,
+			linkId,
+			url,
+			urlHash: hash,
+			exact,
+			prefix: input.prefix || null,
+			suffix: input.suffix || null,
+			start: input.start ?? null,
+			end: input.end ?? null,
+			note: input.note?.trim() || null,
+			createdAt: now()
+		})
+		.run();
+	return { id, linkId };
+}
+
+export function deleteHighlight(userId: string, id: string): void {
+	db.delete(highlight).where(and(eq(highlight.id, id), eq(highlight.userId, userId))).run();
+}
+
+export function updateHighlightNote(userId: string, id: string, note: string | null): void {
+	db.update(highlight)
+		.set({ note: note?.trim() || null })
+		.where(and(eq(highlight.id, id), eq(highlight.userId, userId)))
+		.run();
 }
 
 export function followUser(userId: string, subjectId: string): void {
