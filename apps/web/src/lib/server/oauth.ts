@@ -7,12 +7,11 @@ import {
 	type OAuthClientMetadataInput
 } from '@atproto/oauth-client-node';
 import { eq } from 'drizzle-orm';
-import { ALL_COLLECTIONS } from '@george/shared';
 import { config } from '$lib/server/config';
 import { db } from '$lib/server/db';
 import { oauthSession, oauthState } from '$lib/server/db/schema';
 
-export const SCOPE = ['atproto', ...ALL_COLLECTIONS.map((c) => `repo:${c}`)].join(' ');
+export const SCOPE = config.oauthScope;
 
 const redirectUri = `${config.appUrl}/oauth/callback`;
 
