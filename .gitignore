@@ -5,6 +5,7 @@
 
 # Node / build
 node_modules/
+.wxt/
 dist/
 .output/
 .svelte-kit/

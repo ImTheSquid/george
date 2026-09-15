@@ -5,4 +5,5 @@ packages:
 allowBuilds:
   better-sqlite3: true
   core-js: false
+  core-js-pure: false
   esbuild: true
