@@ -4,15 +4,17 @@ One container (SvelteKit + SQLite) on 127.0.0.1:3031 behind the host nginx at `g
 
 ## 1. DNS
 
-`george` → server (CNAME `home.jackhogan.me`, DNS only on Cloudflare — proxied also works; nothing here needs a wildcard).
+An `A`/`CNAME` record for the app hostname pointing at the server. No wildcard needed.
 
 ## 2. Certificate (once; renews via the certbot timer)
 
 ```sh
 sudo certbot certonly --dns-cloudflare \
-  --dns-cloudflare-credentials /home/jack/.secrets/certbot/cloudflare.ini \
+  --dns-cloudflare-credentials /path/to/cloudflare.ini \
   -d george.jackhogan.me
 ```
+
+(Any certbot authenticator works; DNS-01 via Cloudflare is just what this instance uses.)
 
 ## 3. nginx
 

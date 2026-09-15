@@ -13,7 +13,7 @@
 
 <p>
 	Curius's reads are public, so this needs no login there: enter your profile URL (like
-	<code>curius.app/jack-hogan</code>) and your saved links, highlights, and comments are copied here. Running it
+	<code>curius.app/your-name</code>) and your saved links, highlights, and comments are copied here. Running it
 	again only adds what is new.
 </p>
 
