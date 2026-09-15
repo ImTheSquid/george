@@ -1,3 +1,5 @@
+<img src="icon.svg" alt="" width="72" align="right">
+
 # george
 
 Open-source Curius: save a page from your browser, friends see it in a shared feed, highlight and comment on what you read. Sign up with a username and a passkey — nothing else. Invite-only by default.
