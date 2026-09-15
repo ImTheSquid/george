@@ -23,10 +23,22 @@
 		if (!connected || !pageUrl) return;
 		try {
 			info = await api.page(pageUrl);
+			// Opening the popup saves the page (Curius behaviour); the buttons then undo or refine.
+			if (!info.mine && !info.unsupported) {
+				await api.save({ url: pageUrl, title: tab?.title });
+				info = await api.page(pageUrl);
+				notifyPage();
+			}
 		} catch (e) {
 			if (e instanceof NotConnected) connected = false;
 			else error = e instanceof Error ? e.message : String(e);
 		}
+	}
+
+	function notifyPage() {
+		if (!tab?.id) return;
+		browser.runtime.sendMessage({ type: 'george:page-changed' } satisfies Message).catch(() => {});
+		browser.tabs.sendMessage(tab.id, { type: 'george:refresh' } satisfies Message).catch(() => {});
 	}
 
 	async function act(fn: () => Promise<unknown>) {
@@ -35,11 +47,8 @@
 		error = null;
 		try {
 			await fn();
-			await load();
-			if (tab?.id) {
-				browser.runtime.sendMessage({ type: 'george:page-changed' } satisfies Message).catch(() => {});
-				browser.tabs.sendMessage(tab.id, { type: 'george:refresh' } satisfies Message).catch(() => {});
-			}
+			info = await api.page(pageUrl!);
+			notifyPage();
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -48,6 +57,7 @@
 	}
 
 	const save = (toRead = false) => act(() => api.save({ url: pageUrl!, title: tab?.title, toRead }));
+	// Unsave clears `info.mine` locally so the popup doesn't immediately re-save on the next load().
 	const unsave = () => act(() => api.unsave(pageUrl!));
 	const toggleFavorite = () => act(() => api.save({ url: pageUrl!, favorite: !info?.mine?.favorite }));
 	const toggleRead = () => act(() => api.save({ url: pageUrl!, toRead: !info?.mine?.toRead }));
