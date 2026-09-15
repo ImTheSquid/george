@@ -81,8 +81,9 @@ export default defineContentScript({
 
 		// ---- floating UI: selection toolbar + note popover -------------------------------
 
+		// Absolutely positioned in page coordinates so the UI scrolls with the text it is anchored to.
 		const root = document.createElement('div');
-		root.setAttribute('style', 'position:fixed;z-index:2147483647;top:0;left:0;width:0;height:0');
+		root.setAttribute('style', 'position:absolute;z-index:2147483647;top:0;left:0;width:0;height:0');
 		document.documentElement.append(root);
 		ctx.onInvalidated(() => {
 			for (const c of cleanups) c();
@@ -91,7 +92,7 @@ export default defineContentScript({
 		});
 
 		const toolbar = document.createElement('div');
-		toolbar.setAttribute('style', 'position:fixed;display:none;gap:4px;box-shadow:0 1px 4px rgba(0,0,0,.3);border-radius:4px');
+		toolbar.setAttribute('style', 'position:absolute;display:none;gap:4px;box-shadow:0 1px 4px rgba(0,0,0,.3);border-radius:4px');
 		const hlBtn = document.createElement('button');
 		hlBtn.textContent = 'highlight';
 		hlBtn.setAttribute('style', BTN);
@@ -103,7 +104,7 @@ export default defineContentScript({
 		const popover = document.createElement('div');
 		popover.setAttribute(
 			'style',
-			`position:fixed;display:none;flex-direction:column;gap:6px;width:280px;padding:8px;background:#fff;${FONT};` +
+			`position:absolute;display:none;flex-direction:column;gap:6px;width:280px;padding:8px;background:#fff;${FONT};` +
 				'border:1px solid #ddd;border-radius:6px;box-shadow:0 2px 10px rgba(0,0,0,.25)'
 		);
 		const who = document.createElement('div');
@@ -201,9 +202,11 @@ export default defineContentScript({
 		function place(el: HTMLElement, rect: DOMRect, display: string) {
 			el.style.display = display;
 			const w = el.offsetWidth || 280;
-			el.style.left = `${Math.min(Math.max(4, rect.left), window.innerWidth - w - 4)}px`;
+			const left = Math.min(Math.max(4, rect.left), window.innerWidth - w - 4);
 			const above = rect.top - el.offsetHeight - 8;
-			el.style.top = `${above > 4 ? above : rect.bottom + 8}px`;
+			const top = above > 4 ? above : rect.bottom + 8;
+			el.style.left = `${left + window.scrollX}px`;
+			el.style.top = `${top + window.scrollY}px`;
 		}
 
 		function reposition() {
@@ -212,7 +215,6 @@ export default defineContentScript({
 			if (popover.style.display !== 'none') place(popover, rect, 'flex');
 			else if (toolbar.style.display !== 'none') place(toolbar, rect, 'flex');
 		}
-		ctx.addEventListener(window, 'scroll', reposition, { passive: true, capture: true });
 		ctx.addEventListener(window, 'resize', reposition, { passive: true });
 
 		function hideAll() {
