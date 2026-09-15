@@ -19,7 +19,7 @@
 		const s = await getSettings();
 		appUrl = s.appUrl;
 		connected = !!s.token;
-		[tab] = await browser.tabs.query({ active: true, currentWindow: true });
+		tab = (await browser.tabs.query({ active: true, currentWindow: true }))[0] ?? null;
 		if (!connected || !pageUrl) return;
 		try {
 			info = await api.page(pageUrl);
