@@ -293,9 +293,10 @@ export default defineContentScript({
 
 		// ---- selection toolbar (the only thing that floats over the text) ----------------
 
-		toolbar.setAttribute('style', 'position:absolute;display:none;gap:4px;box-shadow:0 1px 4px rgba(0,0,0,.3);border-radius:4px');
-		const hlBtn = el('button', BTN, 'highlight');
-		const noteBtn = el('button', BTN, '+ note');
+		toolbar.setAttribute('style', 'position:absolute;display:none;width:max-content;gap:4px;box-shadow:0 1px 4px rgba(0,0,0,.3);border-radius:4px');
+		const toolbarBtn = `${BTN};white-space:nowrap;flex-shrink:0`;
+		const hlBtn = el('button', toolbarBtn, 'highlight');
+		const noteBtn = el('button', toolbarBtn, 'note +');
 		toolbar.append(hlBtn, noteBtn);
 		let pending: Range | null = null;
 
