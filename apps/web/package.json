@@ -29,6 +29,7 @@
 		"vitest": "^4.1.8"
 	},
 	"dependencies": {
+		"@george/curius": "workspace:*",
 		"@george/shared": "workspace:*",
 		"@simplewebauthn/browser": "^14.0.0",
 		"@simplewebauthn/server": "^14.0.2",

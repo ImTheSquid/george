@@ -1,0 +1,20 @@
+{
+  "name": "@george/curius",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Read a user's data out of curius.app's public API",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "curius-export": "./bin/export.mjs"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "export": "node bin/export.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}

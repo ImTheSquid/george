@@ -17,6 +17,7 @@
 <p class="row">
 	<a href="/me" aria-current={!data.toRead ? 'page' : undefined}>saved</a>
 	<a href="/me?view=queue" aria-current={data.toRead ? 'page' : undefined}>queue</a>
+	<a href="/import/curius" class="muted" style="margin-left:auto">import from Curius</a>
 </p>
 
 <form method="POST" action="?/save" use:enhance class="row">

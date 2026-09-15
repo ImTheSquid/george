@@ -25,6 +25,7 @@ export default defineConfig({
 				test: {
 					name: 'server',
 					environment: 'node',
+					env: { DATABASE_URL: ':memory:' },
 					include: ['src/**/*.{test,spec}.{js,ts}'],
 					exclude: ['src/**/*.svelte.{test,spec}.{js,ts}']
 				}
