@@ -55,6 +55,75 @@ export default defineContentScript({
 			lastInfo = info;
 			byId = new Map(info.highlights.map((h) => [h.highlight.id, h]));
 			for (const h of info.highlights) await paint(h);
+			layoutCards();
+		}
+
+		// ---- margin cards: notes and comments always visible beside the text -----------------
+
+		const cardsLayer = document.createElement('div');
+		const CARD_W = 260;
+
+		function commentsFor(type: 'highlight' | 'comment', id: string, depth = 0): { name: string; text: string; depth: number }[] {
+			const out: { name: string; text: string; depth: number }[] = [];
+			for (const c of (lastInfo?.comments ?? []).filter((c) => c.subjectType === type && c.subjectId === id)) {
+				out.push({ name: c.mine ? 'you' : c.user.displayName ?? c.user.username, text: c.text, depth });
+				out.push(...commentsFor('comment', c.id, depth + 1));
+			}
+			return out;
+		}
+
+		function layoutCards() {
+			cardsLayer.replaceChildren();
+			const viewportW = document.documentElement.clientWidth;
+			if (viewportW < 700 || !lastInfo) return;
+			const left = viewportW - CARD_W - 16 + window.scrollX;
+
+			const entries: { top: number; el: HTMLElement }[] = [];
+			for (const h of lastInfo.highlights) {
+				const comments = commentsFor('highlight', h.highlight.id);
+				if (!h.highlight.note && comments.length === 0) continue;
+				const mark = document.querySelector(`mark[${MARK_ATTR}="${h.highlight.id}"]`);
+				if (!mark) continue;
+				const rect = mark.getBoundingClientRect();
+
+				const card = document.createElement('div');
+				card.setAttribute(
+					'style',
+					`position:absolute;width:${CARD_W}px;box-sizing:border-box;padding:8px 10px;background:#fff;${FONT};font-size:12px;` +
+						'border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.25);cursor:pointer'
+				);
+				const author = document.createElement('div');
+				author.setAttribute('style', 'font-weight:600;margin-bottom:2px');
+				author.textContent = h.mine ? 'you' : h.user.displayName ?? h.user.username;
+				card.append(author);
+				if (h.highlight.note) {
+					const note = document.createElement('div');
+					note.setAttribute('style', 'white-space:pre-wrap');
+					note.textContent = h.highlight.note;
+					card.append(note);
+				}
+				for (const c of comments) {
+					const row = document.createElement('div');
+					row.setAttribute('style', `margin:4px 0 0 ${Math.min(c.depth, 3) * 10}px;padding-top:4px;border-top:1px solid #eee`);
+					const n = document.createElement('span');
+					n.setAttribute('style', 'color:#666');
+					n.textContent = `${c.name}: `;
+					row.append(n, document.createTextNode(c.text));
+					card.append(row);
+				}
+				card.addEventListener('click', () => openPopover(mark, h));
+				entries.push({ top: rect.top + window.scrollY, el: card });
+			}
+
+			entries.sort((a, b) => a.top - b.top);
+			let cursor = 0;
+			for (const e of entries) {
+				cardsLayer.append(e.el);
+				const top = Math.max(e.top, cursor);
+				e.el.style.left = `${left}px`;
+				e.el.style.top = `${top}px`;
+				cursor = top + e.el.offsetHeight + 8;
+			}
 		}
 
 		async function paint(h: Hl) {
@@ -85,6 +154,7 @@ export default defineContentScript({
 		const root = document.createElement('div');
 		root.setAttribute('style', 'position:absolute;z-index:2147483647;top:0;left:0;width:0;height:0');
 		document.documentElement.append(root);
+		root.append(cardsLayer);
 		ctx.onInvalidated(() => {
 			for (const c of cleanups) c();
 			cleanups = [];
@@ -222,12 +292,16 @@ export default defineContentScript({
 		}
 
 		function reposition() {
+			layoutCards();
 			if (!anchor) return;
 			const rect = anchor.getBoundingClientRect();
 			if (popover.style.display !== 'none') place(popover, rect, 'flex');
 			else if (toolbar.style.display !== 'none') place(toolbar, rect, 'flex');
 		}
 		ctx.addEventListener(window, 'resize', reposition, { passive: true });
+		// Late layout shifts (images, fonts) move the text; follow them.
+		ctx.addEventListener(window, 'load', layoutCards);
+		ctx.setTimeout(layoutCards, 1500);
 
 		function hideAll() {
 			toolbar.style.display = 'none';
