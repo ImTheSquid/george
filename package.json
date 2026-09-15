@@ -7,7 +7,6 @@
     "node": ">=22"
   },
   "scripts": {
-    "gen": "pnpm --filter @george/lexicon gen",
     "test": "pnpm -r --if-present test",
     "check": "pnpm -r --if-present check"
   }

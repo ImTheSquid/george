@@ -6,12 +6,12 @@
 	const url = $derived(item.kind === 'link' ? item.link.url : item.highlight.url);
 	const host = $derived(new URL(url).hostname.replace(/^www\./, ''));
 	const when = $derived(new Date(item.createdAt).toLocaleDateString());
-	const name = $derived(item.actor.displayName ?? item.actor.handle);
+	const name = $derived(item.user.displayName ?? item.user.username);
 </script>
 
 <article class="item">
 	<div class="meta">
-		<a href="/u/{item.actor.handle}">{name}</a>
+		<a href="/u/{item.user.username}">{name}</a>
 		{item.kind === 'link' ? 'saved' : 'highlighted'} · {when}
 	</div>
 	{#if item.kind === 'link'}

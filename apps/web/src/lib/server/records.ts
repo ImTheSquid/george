@@ -1,26 +1,8 @@
-// Write records to the user's repo via their OAuth session, then index them
-// locally so the UI reflects the change before the firehose echoes it back.
 import { and, eq } from 'drizzle-orm';
-import { COLLECTIONS, normalizeUrl, urlHash } from '@george/shared';
-import * as Link from '@george/lexicon/types/me/jackhogan/george/link';
-import * as Follow from '@george/lexicon/types/me/jackhogan/george/follow';
-import * as Profile from '@george/lexicon/types/me/jackhogan/george/profile';
+import { normalizeUrl, urlHash } from '@george/shared';
 import { db } from '$lib/server/db';
-import { follow, link } from '$lib/server/db/schema';
-import { agentFor } from '$lib/server/oauth';
-import { deleteRecord, indexRecord } from '$lib/server/indexer';
-
-export class NotLoggedIn extends Error {}
-
-function rkeyOf(uri: string): string {
-	return uri.slice(uri.lastIndexOf('/') + 1);
-}
-
-async function agentOrThrow(did: string) {
-	const agent = await agentFor(did);
-	if (!agent) throw new NotLoggedIn('no OAuth session; log in again');
-	return agent;
-}
+import { follow, link, user } from '$lib/server/db/schema';
+import { newId, now } from '$lib/server/ids';
 
 export type LinkInput = {
 	url: string;
@@ -31,80 +13,65 @@ export type LinkInput = {
 	tags?: string[];
 };
 
-/** Create the user's link record for a URL, or update the existing one. Returns the record URI. */
-export async function saveLink(did: string, input: LinkInput): Promise<string> {
+/** Create the user's link for a URL, or update the existing one. Returns the link id. */
+export async function saveLink(userId: string, input: LinkInput): Promise<string> {
 	const url = normalizeUrl(input.url);
+	const hash = await urlHash(url);
 	const existing = db
 		.select()
 		.from(link)
-		.where(and(eq(link.did, did), eq(link.urlHash, await urlHash(url))))
+		.where(and(eq(link.userId, userId), eq(link.urlHash, hash)))
 		.get();
-
-	const record: Link.Record = {
-		$type: COLLECTIONS.link,
-		url,
-		title: input.title ?? existing?.title ?? undefined,
-		description: input.description ?? existing?.description ?? undefined,
-		toRead: input.toRead ?? existing?.toRead ?? false,
-		favorite: input.favorite ?? existing?.favorite ?? false,
-		tags: input.tags ?? existing?.tags ?? [],
-		createdAt: existing?.createdAt ?? new Date().toISOString()
-	};
-	const v = Link.validateRecord(record);
-	if (!v.success) throw v.error;
-
-	const agent = await agentOrThrow(did);
-	const res = existing
-		? await agent.com.atproto.repo.putRecord({
-				repo: did,
-				collection: COLLECTIONS.link,
-				rkey: rkeyOf(existing.uri),
-				record
+	const t = now();
+	if (existing) {
+		db.update(link)
+			.set({
+				title: input.title ?? existing.title,
+				description: input.description ?? existing.description,
+				toRead: input.toRead ?? existing.toRead,
+				favorite: input.favorite ?? existing.favorite,
+				tags: input.tags ?? existing.tags,
+				updatedAt: t
 			})
-		: await agent.com.atproto.repo.createRecord({ repo: did, collection: COLLECTIONS.link, record });
-	await indexRecord(did, COLLECTIONS.link, res.data.uri, res.data.cid, record);
-	return res.data.uri;
+			.where(eq(link.id, existing.id))
+			.run();
+		return existing.id;
+	}
+	const id = newId();
+	db.insert(link)
+		.values({
+			id,
+			userId,
+			url,
+			urlHash: hash,
+			title: input.title ?? null,
+			description: input.description ?? null,
+			toRead: input.toRead ?? false,
+			favorite: input.favorite ?? false,
+			tags: input.tags ?? [],
+			createdAt: t,
+			updatedAt: t
+		})
+		.run();
+	return id;
 }
 
-export async function deleteLink(did: string, uri: string): Promise<void> {
-	const row = db.select().from(link).where(and(eq(link.uri, uri), eq(link.did, did))).get();
-	if (!row) return;
-	const agent = await agentOrThrow(did);
-	await agent.com.atproto.repo.deleteRecord({ repo: did, collection: COLLECTIONS.link, rkey: rkeyOf(uri) });
-	deleteRecord(COLLECTIONS.link, uri);
+export function deleteLink(userId: string, id: string): void {
+	db.delete(link).where(and(eq(link.id, id), eq(link.userId, userId))).run();
 }
 
-export async function followActor(did: string, subjectDid: string): Promise<void> {
-	if (did === subjectDid) return;
-	const existing = db
-		.select()
-		.from(follow)
-		.where(and(eq(follow.did, did), eq(follow.subjectDid, subjectDid)))
-		.get();
-	if (existing) return;
-	const record: Follow.Record = { $type: COLLECTIONS.follow, subject: subjectDid, createdAt: new Date().toISOString() };
-	const agent = await agentOrThrow(did);
-	const res = await agent.com.atproto.repo.createRecord({ repo: did, collection: COLLECTIONS.follow, record });
-	await indexRecord(did, COLLECTIONS.follow, res.data.uri, res.data.cid, record);
+export function followUser(userId: string, subjectId: string): void {
+	if (userId === subjectId) return;
+	db.insert(follow).values({ userId, subjectId, createdAt: now() }).onConflictDoNothing().run();
 }
 
-export async function unfollowActor(did: string, subjectDid: string): Promise<void> {
-	const existing = db
-		.select()
-		.from(follow)
-		.where(and(eq(follow.did, did), eq(follow.subjectDid, subjectDid)))
-		.get();
-	if (!existing) return;
-	const agent = await agentOrThrow(did);
-	await agent.com.atproto.repo.deleteRecord({ repo: did, collection: COLLECTIONS.follow, rkey: rkeyOf(existing.uri) });
-	deleteRecord(COLLECTIONS.follow, existing.uri);
+export function unfollowUser(userId: string, subjectId: string): void {
+	db.delete(follow).where(and(eq(follow.userId, userId), eq(follow.subjectId, subjectId))).run();
 }
 
-export async function putProfile(did: string, input: Omit<Profile.Record, '$type'>): Promise<void> {
-	const record: Profile.Record = { $type: COLLECTIONS.profile, ...input };
-	const v = Profile.validateRecord(record);
-	if (!v.success) throw v.error;
-	const agent = await agentOrThrow(did);
-	const res = await agent.com.atproto.repo.putRecord({ repo: did, collection: COLLECTIONS.profile, rkey: 'self', record });
-	await indexRecord(did, COLLECTIONS.profile, res.data.uri, res.data.cid, record);
+export function updateProfile(
+	userId: string,
+	input: { displayName?: string | null; description?: string | null; website?: string | null }
+): void {
+	db.update(user).set(input).where(eq(user.id, userId)).run();
 }

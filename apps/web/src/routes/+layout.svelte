@@ -15,7 +15,8 @@
 		{#if data.user}
 			<a href="/me">my links</a>
 			<a href="/people">people</a>
-			<span class="handle">{data.user.handle}</span>
+			{#if data.user.isAdmin}<a href="/admin/invites">invites</a>{/if}
+			<a class="handle" href="/u/{data.user.username}">{data.user.username}</a>
 			<form method="POST" action="/logout">
 				<button class="link">log out</button>
 			</form>

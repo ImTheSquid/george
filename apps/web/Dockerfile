@@ -6,7 +6,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 make g+
 RUN corepack enable
 WORKDIR /src
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
-COPY lexicons ./lexicons
 COPY packages ./packages
 COPY apps/web ./apps/web
 RUN pnpm install --frozen-lockfile

@@ -1,24 +1,70 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { blob, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
-// Index of records seen on the firehose. `uri` is the at:// URI of the record.
-
-export const actor = sqliteTable('actor', {
-	did: text().primaryKey(),
-	handle: text().notNull(),
+export const user = sqliteTable('user', {
+	id: text().primaryKey(),
+	username: text().notNull().unique(),
 	displayName: text(),
 	description: text(),
 	website: text(),
 	curiusUserLink: text(),
-	active: integer({ mode: 'boolean' }).notNull().default(true),
-	indexedAt: text().notNull()
+	isAdmin: integer({ mode: 'boolean' }).notNull().default(false),
+	createdAt: text().notNull()
+});
+
+// WebAuthn credentials (passkeys). `id` is the base64url credential id.
+export const credential = sqliteTable(
+	'credential',
+	{
+		id: text().primaryKey(),
+		userId: text()
+			.notNull()
+			.references(() => user.id, { onDelete: 'cascade' }),
+		publicKey: blob({ mode: 'buffer' }).notNull(),
+		counter: integer().notNull().default(0),
+		transports: text({ mode: 'json' }).$type<string[]>().notNull().default([]),
+		deviceType: text(),
+		backedUp: integer({ mode: 'boolean' }).notNull().default(false),
+		name: text(),
+		createdAt: text().notNull(),
+		lastUsedAt: text()
+	},
+	(t) => [index('credential_user').on(t.userId)]
+);
+
+// Pending WebAuthn ceremonies, keyed by a short-lived cookie.
+export const challenge = sqliteTable('challenge', {
+	id: text().primaryKey(),
+	challenge: text().notNull(),
+	kind: text({ enum: ['signup', 'login'] }).notNull(),
+	username: text(),
+	inviteCode: text(),
+	expiresAt: text().notNull()
+});
+
+export const invite = sqliteTable('invite', {
+	code: text().primaryKey(),
+	createdBy: text().references(() => user.id, { onDelete: 'set null' }),
+	usedBy: text().references(() => user.id, { onDelete: 'set null' }),
+	createdAt: text().notNull(),
+	usedAt: text()
+});
+
+export const session = sqliteTable('session', {
+	id: text().primaryKey(),
+	userId: text()
+		.notNull()
+		.references(() => user.id, { onDelete: 'cascade' }),
+	createdAt: text().notNull(),
+	lastSeenAt: text().notNull()
 });
 
 export const link = sqliteTable(
 	'link',
 	{
-		uri: text().primaryKey(),
-		cid: text().notNull(),
-		did: text().notNull(),
+		id: text().primaryKey(),
+		userId: text()
+			.notNull()
+			.references(() => user.id, { onDelete: 'cascade' }),
 		url: text().notNull(),
 		urlHash: text().notNull(),
 		title: text(),
@@ -27,10 +73,10 @@ export const link = sqliteTable(
 		favorite: integer({ mode: 'boolean' }).notNull().default(false),
 		tags: text({ mode: 'json' }).$type<string[]>().notNull().default([]),
 		createdAt: text().notNull(),
-		indexedAt: text().notNull()
+		updatedAt: text().notNull()
 	},
 	(t) => [
-		index('link_did_url').on(t.did, t.urlHash),
+		uniqueIndex('link_user_url').on(t.userId, t.urlHash),
 		index('link_url_hash').on(t.urlHash),
 		index('link_created').on(t.createdAt)
 	]
@@ -39,24 +85,24 @@ export const link = sqliteTable(
 export const highlight = sqliteTable(
 	'highlight',
 	{
-		uri: text().primaryKey(),
-		cid: text().notNull(),
-		did: text().notNull(),
+		id: text().primaryKey(),
+		userId: text()
+			.notNull()
+			.references(() => user.id, { onDelete: 'cascade' }),
+		linkId: text().references(() => link.id, { onDelete: 'set null' }),
 		url: text().notNull(),
 		urlHash: text().notNull(),
-		linkUri: text(),
 		exact: text().notNull(),
 		prefix: text(),
 		suffix: text(),
 		start: integer(),
 		end: integer(),
 		note: text(),
-		createdAt: text().notNull(),
-		indexedAt: text().notNull()
+		createdAt: text().notNull()
 	},
 	(t) => [
 		index('highlight_url_hash').on(t.urlHash),
-		index('highlight_did').on(t.did),
+		index('highlight_user').on(t.userId),
 		index('highlight_created').on(t.createdAt)
 	]
 );
@@ -64,48 +110,28 @@ export const highlight = sqliteTable(
 export const comment = sqliteTable(
 	'comment',
 	{
-		uri: text().primaryKey(),
-		cid: text().notNull(),
-		did: text().notNull(),
-		subjectUri: text().notNull(),
+		id: text().primaryKey(),
+		userId: text()
+			.notNull()
+			.references(() => user.id, { onDelete: 'cascade' }),
+		subjectType: text({ enum: ['link', 'highlight', 'comment'] }).notNull(),
+		subjectId: text().notNull(),
 		text: text().notNull(),
-		createdAt: text().notNull(),
-		indexedAt: text().notNull()
+		createdAt: text().notNull()
 	},
-	(t) => [index('comment_subject').on(t.subjectUri)]
+	(t) => [index('comment_subject').on(t.subjectType, t.subjectId)]
 );
 
 export const follow = sqliteTable(
 	'follow',
 	{
-		uri: text().primaryKey(),
-		did: text().notNull(),
-		subjectDid: text().notNull(),
+		userId: text()
+			.notNull()
+			.references(() => user.id, { onDelete: 'cascade' }),
+		subjectId: text()
+			.notNull()
+			.references(() => user.id, { onDelete: 'cascade' }),
 		createdAt: text().notNull()
 	},
-	(t) => [uniqueIndex('follow_did_subject').on(t.did, t.subjectDid), index('follow_subject').on(t.subjectDid)]
+	(t) => [primaryKey({ columns: [t.userId, t.subjectId] }), index('follow_subject').on(t.subjectId)]
 );
-
-// App login sessions (cookie id -> did)
-export const session = sqliteTable('session', {
-	id: text().primaryKey(),
-	did: text().notNull(),
-	createdAt: text().notNull(),
-	lastSeenAt: text().notNull()
-});
-
-// Stores for @atproto/oauth-client-node
-export const oauthState = sqliteTable('oauth_state', {
-	key: text().primaryKey(),
-	value: text().notNull()
-});
-
-export const oauthSession = sqliteTable('oauth_session', {
-	did: text().primaryKey(),
-	value: text().notNull()
-});
-
-export const kv = sqliteTable('kv', {
-	key: text().primaryKey(),
-	value: text().notNull()
-});

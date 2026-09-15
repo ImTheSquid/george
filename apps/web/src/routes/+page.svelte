@@ -15,7 +15,7 @@
 {:else if data.feed.length === 0}
 	<p class="muted">Nothing here yet. <a href="/people">Follow some people</a> to fill your feed.</p>
 {:else}
-	{#each data.feed as item (item.kind === 'link' ? item.link.uri : item.highlight.uri)}
+	{#each data.feed as item (item.kind === 'link' ? item.link.id : item.highlight.id)}
 		<FeedItem {item} />
 	{/each}
 {/if}

@@ -29,7 +29,7 @@
 	<p class="error">{form.message}</p>
 {/if}
 
-{#each data.links as l (l.uri)}
+{#each data.links as l (l.id)}
 	<article class="item">
 		<a class="title" href={l.url} rel="noopener">{l.title ?? l.url}</a>
 		<span class="muted">{host(l.url)}</span>
@@ -47,7 +47,7 @@
 				<button class="link">{l.favorite ? '★ unfavorite' : '☆ favorite'}</button>
 			</form>
 			<form method="POST" action="?/delete" use:enhance>
-				<input type="hidden" name="uri" value={l.uri} />
+				<input type="hidden" name="id" value={l.id} />
 				<button class="link">delete</button>
 			</form>
 		</div>

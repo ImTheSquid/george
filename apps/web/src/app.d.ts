@@ -1,8 +1,8 @@
 declare global {
 	namespace App {
 		interface Locals {
-			/** DID of the logged-in user, from the session cookie. */
-			did: string | null;
+			/** Logged-in user id, from the session cookie. */
+			userId: string | null;
 		}
 	}
 }

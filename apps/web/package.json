@@ -13,8 +13,7 @@
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run",
 		"db:generate": "drizzle-kit generate",
-		"db:studio": "drizzle-kit studio",
-		"keygen": "node scripts/keygen.mjs"
+		"db:studio": "drizzle-kit studio"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-node": "^5.5.4",
@@ -30,13 +29,9 @@
 		"vitest": "^4.1.8"
 	},
 	"dependencies": {
-		"@atproto/api": "^0.20.44",
-		"@atproto/identity": "^0.5.0",
-		"@atproto/jwk-jose": "^0.2.0",
-		"@atproto/oauth-client-node": "^0.5.7",
-		"@atproto/sync": "^0.4.10",
-		"@george/lexicon": "workspace:*",
 		"@george/shared": "workspace:*",
+		"@simplewebauthn/browser": "^14.0.0",
+		"@simplewebauthn/server": "^14.0.2",
 		"better-sqlite3": "^13.0.2",
 		"drizzle-orm": "^0.45.2"
 	}

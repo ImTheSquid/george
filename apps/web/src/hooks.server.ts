@@ -1,15 +1,14 @@
 import type { Handle, ServerInit } from '@sveltejs/kit';
 import { building } from '$app/environment';
-import { config } from '$lib/server/config';
-import { SESSION_COOKIE, getSessionDid } from '$lib/server/session';
-import { startIndexer } from '$lib/server/indexer';
+import { SESSION_COOKIE, getSessionUserId } from '$lib/server/session';
+import { bootstrapInvite } from '$lib/server/invites';
 
 export const init: ServerInit = async () => {
-	if (!building && config.indexer) startIndexer();
+	if (!building) bootstrapInvite();
 };
 
 export const handle: Handle = async ({ event, resolve }) => {
 	const sid = event.cookies.get(SESSION_COOKIE);
-	event.locals.did = sid ? getSessionDid(sid) : null;
+	event.locals.userId = sid ? getSessionUserId(sid) : null;
 	return resolve(event);
 };

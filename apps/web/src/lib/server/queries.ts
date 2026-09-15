@@ -1,17 +1,35 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { actor, follow, highlight, link } from '$lib/server/db/schema';
+import { follow, highlight, link, user } from '$lib/server/db/schema';
 
-export type ActorRow = typeof actor.$inferSelect;
+export type UserRow = typeof user.$inferSelect;
 export type LinkRow = typeof link.$inferSelect;
 export type HighlightRow = typeof highlight.$inferSelect;
 
-export type FeedItem =
-	| { kind: 'link'; actor: ActorRow; link: LinkRow; createdAt: string }
-	| { kind: 'highlight'; actor: ActorRow; highlight: HighlightRow; createdAt: string };
+export type PublicUser = Pick<UserRow, 'id' | 'username' | 'displayName' | 'description' | 'website'>;
 
-export function listMyLinks(did: string, opts: { toRead?: boolean; limit?: number } = {}): LinkRow[] {
-	const conds = [eq(link.did, did)];
+export type FeedItem =
+	| { kind: 'link'; user: PublicUser; link: LinkRow; createdAt: string }
+	| { kind: 'highlight'; user: PublicUser; highlight: HighlightRow; createdAt: string };
+
+const publicUser = {
+	id: user.id,
+	username: user.username,
+	displayName: user.displayName,
+	description: user.description,
+	website: user.website
+};
+
+export function getUser(id: string): UserRow | null {
+	return db.select().from(user).where(eq(user.id, id)).get() ?? null;
+}
+
+export function getUserByUsername(username: string): PublicUser | null {
+	return db.select(publicUser).from(user).where(eq(user.username, username.toLowerCase())).get() ?? null;
+}
+
+export function listMyLinks(userId: string, opts: { toRead?: boolean; limit?: number } = {}): LinkRow[] {
+	const conds = [eq(link.userId, userId)];
 	if (opts.toRead !== undefined) conds.push(eq(link.toRead, opts.toRead));
 	return db
 		.select()
@@ -22,48 +40,48 @@ export function listMyLinks(did: string, opts: { toRead?: boolean; limit?: numbe
 		.all();
 }
 
-export function getFollowingDids(did: string): string[] {
+export function getFollowingIds(userId: string): string[] {
 	return db
-		.select({ subjectDid: follow.subjectDid })
+		.select({ subjectId: follow.subjectId })
 		.from(follow)
-		.where(eq(follow.did, did))
+		.where(eq(follow.userId, userId))
 		.all()
-		.map((r) => r.subjectDid);
+		.map((r) => r.subjectId);
 }
 
-export function isFollowing(did: string, subjectDid: string): boolean {
+export function isFollowing(userId: string, subjectId: string): boolean {
 	return !!db
-		.select({ uri: follow.uri })
+		.select({ userId: follow.userId })
 		.from(follow)
-		.where(and(eq(follow.did, did), eq(follow.subjectDid, subjectDid)))
+		.where(and(eq(follow.userId, userId), eq(follow.subjectId, subjectId)))
 		.get();
 }
 
-/** Newest links and highlights from the accounts `did` follows. */
-export function getFeed(did: string, limit = 100): FeedItem[] {
-	const dids = getFollowingDids(did);
-	if (dids.length === 0) return [];
+/** Newest links and highlights from the accounts `userId` follows. */
+export function getFeed(userId: string, limit = 100): FeedItem[] {
+	const ids = getFollowingIds(userId);
+	if (ids.length === 0) return [];
 	const links = db
-		.select({ link, actor })
+		.select({ link, user: publicUser })
 		.from(link)
-		.innerJoin(actor, eq(actor.did, link.did))
-		.where(inArray(link.did, dids))
+		.innerJoin(user, eq(user.id, link.userId))
+		.where(and(inArray(link.userId, ids), eq(link.toRead, false)))
 		.orderBy(desc(link.createdAt))
 		.limit(limit)
 		.all();
 	const highlights = db
-		.select({ highlight, actor })
+		.select({ highlight, user: publicUser })
 		.from(highlight)
-		.innerJoin(actor, eq(actor.did, highlight.did))
-		.where(inArray(highlight.did, dids))
+		.innerJoin(user, eq(user.id, highlight.userId))
+		.where(inArray(highlight.userId, ids))
 		.orderBy(desc(highlight.createdAt))
 		.limit(limit)
 		.all();
 	const items: FeedItem[] = [
-		...links.map((r) => ({ kind: 'link' as const, actor: r.actor, link: r.link, createdAt: r.link.createdAt })),
+		...links.map((r) => ({ kind: 'link' as const, user: r.user, link: r.link, createdAt: r.link.createdAt })),
 		...highlights.map((r) => ({
 			kind: 'highlight' as const,
-			actor: r.actor,
+			user: r.user,
 			highlight: r.highlight,
 			createdAt: r.highlight.createdAt
 		}))
@@ -72,15 +90,15 @@ export function getFeed(did: string, limit = 100): FeedItem[] {
 	return items.slice(0, limit);
 }
 
-export function listActors(limit = 500): ActorRow[] {
-	return db.select().from(actor).where(eq(actor.active, true)).orderBy(actor.handle).limit(limit).all();
+export function listUsers(limit = 500): PublicUser[] {
+	return db.select(publicUser).from(user).orderBy(user.username).limit(limit).all();
 }
 
-export function listLinksBy(did: string, limit = 100): LinkRow[] {
+export function listLinksBy(userId: string, limit = 100): LinkRow[] {
 	return db
 		.select()
 		.from(link)
-		.where(and(eq(link.did, did), eq(link.toRead, false)))
+		.where(and(eq(link.userId, userId), eq(link.toRead, false)))
 		.orderBy(desc(link.createdAt))
 		.limit(limit)
 		.all();

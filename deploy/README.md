@@ -1,58 +1,35 @@
 # Deploying george
 
-Hosts: app `george.jackhogan.me` (127.0.0.1:3031); PDS `pds.jackhogan.me` and handles `*.george.jackhogan.me` (127.0.0.1:3030). The PDS is a general atproto host, not tied to george — hence its own name. Host nginx terminates TLS.
+One container (SvelteKit + SQLite) on 127.0.0.1:3031 behind the host nginx at `george.jackhogan.me`.
 
-## 1. DNS (Cloudflare, proxy OFF for all)
+## 1. DNS
 
-| Type | Name | Content |
-|---|---|---|
-| CNAME | `george` | `home.jackhogan.me` |
-| CNAME | `*.george` | `home.jackhogan.me` |
-| CNAME | `pds` | `home.jackhogan.me` |
+`george` → server (CNAME `home.jackhogan.me`, DNS only on Cloudflare — proxied also works; nothing here needs a wildcard).
 
-Proxy must be off: Cloudflare's free edge cert does not cover `*.george.jackhogan.me`, and proxying the PDS would cap blob uploads and websocket lifetimes.
-
-## 2. Certificate (once; renews via existing certbot timer)
+## 2. Certificate (once; renews via the certbot timer)
 
 ```sh
 sudo certbot certonly --dns-cloudflare \
   --dns-cloudflare-credentials /home/jack/.secrets/certbot/cloudflare.ini \
-  --cert-name george.jackhogan.me \
-  -d george.jackhogan.me -d '*.george.jackhogan.me' -d pds.jackhogan.me
+  -d george.jackhogan.me
 ```
 
 ## 3. nginx
 
 ```sh
-sudo cp nginx/connection_upgrade.conf /etc/nginx/conf.d/
 sudo cp nginx/george.conf /etc/nginx/sites-available/george
-sudo ln -s /etc/nginx/sites-available/george /etc/nginx/sites-enabled/george
+sudo ln -sf /etc/nginx/sites-available/george /etc/nginx/sites-enabled/george
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-## 4. Tranquil PDS
+## 4. App
+
+The compose file builds from `../src` (an rsync/checkout of this repo next to `deploy/`).
 
 ```sh
-git clone https://tangled.org/bas.sh/tranquil-pds ~/tranquil-pds   # or the GitHub mirror Bogay/tranquil-pds
-docker build -t tranquil-pds:local ~/tranquil-pds
-
-cp tranquil/config.toml.example tranquil/config.toml
-openssl rand -base64 48 > tranquil/pg_password        # then paste into config.toml database.url
-# fill secrets.jwt_secret / dpop_secret / master_key with `openssl rand -base64 48`
-docker compose up -d
-docker compose logs tranquil-pds | grep -i invite       # first invite code
-```
-
-Invite codes are minted in the PDS admin panel: https://pds.jackhogan.me/app/admin
-
-## 5. george app
-
-The compose file builds the app from `../src` (an rsync/checkout of this repo next to `deploy/`).
-
-```sh
-cd apps/web && pnpm keygen        # once; paste into deploy/george.env as OAUTH_PRIVATE_KEYS=[...]
 rsync -a --exclude node_modules --exclude .svelte-kit --exclude build --exclude .git ./ server:~/george/src/
-docker compose build george && docker compose up -d george
+docker compose build && docker compose up -d
+docker compose logs george | grep "invite code"     # first signup needs it
 ```
 
-Signup lives at https://pds.jackhogan.me/signup (served by george; see nginx/george.conf for why).
+Later invite codes come from `/admin/invites` (the first account is admin).
