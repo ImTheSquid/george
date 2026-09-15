@@ -66,8 +66,13 @@ export default defineBackground(() => {
 		if (msg.type === 'george:set-token') {
 			return setConnection(msg.token, msg.appUrl).then(() => ({ ok: true }));
 		}
-		if (msg.type === 'george:page-changed' && sender.tab?.id) {
-			return refreshBadge(sender.tab.id, sender.tab.url).then(() => ({ ok: true }));
+		if (msg.type === 'george:page-changed') {
+			const tabId = msg.tabId ?? sender.tab?.id;
+			if (!tabId) return;
+			return browser.tabs
+				.get(tabId)
+				.then((tab) => refreshBadge(tabId, tab.url))
+				.then(() => ({ ok: true }));
 		}
 		if (msg.type === 'george:get-page') {
 			return Promise.resolve({ info: cache.get(msg.tabId) ?? null } satisfies GetPageResponse);

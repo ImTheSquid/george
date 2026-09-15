@@ -54,7 +54,7 @@
 
 	function notifyPage() {
 		if (!tab?.id) return;
-		browser.runtime.sendMessage({ type: 'george:page-changed' } satisfies Message).catch(() => {});
+		browser.runtime.sendMessage({ type: 'george:page-changed', tabId: tab.id } satisfies Message).catch(() => {});
 		browser.tabs.sendMessage(tab.id, { type: 'george:refresh' } satisfies Message).catch(() => {});
 	}
 

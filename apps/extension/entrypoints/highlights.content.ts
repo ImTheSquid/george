@@ -195,6 +195,8 @@ export default defineContentScript({
 
 		let pending: Range | null = null; // current selection, for new highlights
 		let editing: Hl | null = null; // existing highlight being viewed/edited
+		/** What the visible popover/toolbar is anchored to, so it can follow on scroll/resize. */
+		let anchor: Element | Range | null = null;
 
 		function place(el: HTMLElement, rect: DOMRect, display: string) {
 			el.style.display = display;
@@ -204,13 +206,25 @@ export default defineContentScript({
 			el.style.top = `${above > 4 ? above : rect.bottom + 8}px`;
 		}
 
+		function reposition() {
+			if (!anchor) return;
+			const rect = anchor.getBoundingClientRect();
+			if (popover.style.display !== 'none') place(popover, rect, 'flex');
+			else if (toolbar.style.display !== 'none') place(toolbar, rect, 'flex');
+		}
+		ctx.addEventListener(window, 'scroll', reposition, { passive: true, capture: true });
+		ctx.addEventListener(window, 'resize', reposition, { passive: true });
+
 		function hideAll() {
 			toolbar.style.display = 'none';
 			popover.style.display = 'none';
 			editing = null;
+			anchor = null;
 		}
 
-		function openPopover(rect: DOMRect, h: Hl | null) {
+		function openPopover(at: Element | Range, h: Hl | null) {
+			anchor = at;
+			const rect = at.getBoundingClientRect();
 			editing = h;
 			const own = !h || h.mine;
 			who.textContent = h ? (h.mine ? 'your highlight' : `${h.user.displayName ?? h.user.username}'s highlight`) : 'new highlight';
@@ -245,10 +259,11 @@ export default defineContentScript({
 				return;
 			}
 			const range = sel.getRangeAt(0);
-			const anchor = range.commonAncestorContainer;
-			const el = anchor instanceof Element ? anchor : anchor.parentElement;
+			const container = range.commonAncestorContainer;
+			const el = container instanceof Element ? container : container.parentElement;
 			if (!el || el.closest('input, textarea, [contenteditable]') || root.contains(el)) return;
 			pending = range.cloneRange();
+			anchor = pending;
 			place(toolbar, range.getBoundingClientRect(), 'flex');
 		});
 
@@ -263,7 +278,7 @@ export default defineContentScript({
 
 		noteBtn.addEventListener('click', () => {
 			if (!pending) return;
-			openPopover(pending.getBoundingClientRect(), null);
+			openPopover(pending, null);
 		});
 
 		saveBtn.addEventListener('click', async () => {
@@ -299,7 +314,7 @@ export default defineContentScript({
 				const h = byId.get(mark.getAttribute(MARK_ATTR)!);
 				if (h) {
 					ev.preventDefault();
-					openPopover(mark.getBoundingClientRect(), h);
+					openPopover(mark, h);
 					return;
 				}
 			}
