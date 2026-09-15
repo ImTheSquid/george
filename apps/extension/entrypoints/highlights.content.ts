@@ -76,15 +76,18 @@ export default defineContentScript({
 			cardsLayer.replaceChildren();
 			const viewportW = document.documentElement.clientWidth;
 			if (viewportW < 700 || !lastInfo) return;
-			const left = viewportW - CARD_W - 16 + window.scrollX;
 
-			const entries: { top: number; el: HTMLElement }[] = [];
+			const entries: { top: number; left: number; el: HTMLElement }[] = [];
 			for (const h of lastInfo.highlights) {
 				const comments = commentsFor('highlight', h.highlight.id);
 				if (!h.highlight.note && comments.length === 0) continue;
 				const mark = document.querySelector(`mark[${MARK_ATTR}="${h.highlight.id}"]`);
 				if (!mark) continue;
 				const rect = mark.getBoundingClientRect();
+				// Sit just right of the text column the highlight lives in.
+				const block = mark.closest('p, li, blockquote, h1, h2, h3, h4, h5, h6, pre, td, article, section, div') ?? mark;
+				const columnRight = block.getBoundingClientRect().right;
+				const left = Math.min(columnRight + 16, viewportW - CARD_W - 8) + window.scrollX;
 
 				const card = document.createElement('div');
 				card.setAttribute(
@@ -112,7 +115,7 @@ export default defineContentScript({
 					card.append(row);
 				}
 				card.addEventListener('click', () => openPopover(mark, h));
-				entries.push({ top: rect.top + window.scrollY, el: card });
+				entries.push({ top: rect.top + window.scrollY, left, el: card });
 			}
 
 			entries.sort((a, b) => a.top - b.top);
@@ -120,7 +123,7 @@ export default defineContentScript({
 			for (const e of entries) {
 				cardsLayer.append(e.el);
 				const top = Math.max(e.top, cursor);
-				e.el.style.left = `${left}px`;
+				e.el.style.left = `${e.left}px`;
 				e.el.style.top = `${top}px`;
 				cursor = top + e.el.offsetHeight + 8;
 			}
