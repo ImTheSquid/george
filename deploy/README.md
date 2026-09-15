@@ -4,7 +4,7 @@ One container (SvelteKit + SQLite) on 127.0.0.1:3031 behind the host nginx at `g
 
 ## 1. DNS
 
-An `A`/`CNAME` record for the app hostname pointing at the server. No wildcard needed.
+Point the app hostname at the server.
 
 ## 2. Certificate (once; renews via the certbot timer)
 
@@ -13,8 +13,6 @@ sudo certbot certonly --dns-cloudflare \
   --dns-cloudflare-credentials /path/to/cloudflare.ini \
   -d george.jackhogan.me
 ```
-
-(Any certbot authenticator works; DNS-01 via Cloudflare is just what this instance uses.)
 
 ## 3. nginx
 

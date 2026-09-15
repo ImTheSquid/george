@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, or } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { comment, follow, highlight, link, user } from '$lib/server/db/schema';
 
@@ -202,9 +202,6 @@ export function canSeeSubject(userId: string, type: 'link' | 'highlight' | 'comm
 	}
 	return false;
 }
-
-// unused-import guard for `or` in case of future use
-void or;
 
 export function listUsers(limit = 500): PublicUser[] {
 	return db.select(publicUser).from(user).orderBy(user.username).limit(limit).all();

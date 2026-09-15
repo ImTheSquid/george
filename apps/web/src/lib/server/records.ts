@@ -78,7 +78,7 @@ export type HighlightInput = {
 	note?: string;
 };
 
-/** Highlighting a page saves it too (Curius behaviour). Returns the new highlight and its link id. */
+/** Highlighting a page also saves it. Returns the new highlight and its link id. */
 export async function createHighlight(userId: string, input: HighlightInput): Promise<{ id: string; linkId: string }> {
 	const exact = input.exact.trim();
 	if (!exact) throw new Error('Nothing selected');

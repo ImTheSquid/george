@@ -37,7 +37,7 @@
 		}
 		try {
 			let fresh = await api.page(pageUrl);
-			// Opening the popup saves the page (Curius behaviour); the buttons then undo or refine.
+			// Opening the popup saves the page; the buttons then undo or refine.
 			if (!fresh.mine && !fresh.unsupported) {
 				await api.save({ url: pageUrl, title: tab?.title });
 				fresh = await api.page(pageUrl);
