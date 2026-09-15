@@ -31,3 +31,7 @@
 <main>
 	{@render children()}
 </main>
+
+<footer class="muted">
+	<a href="/privacy">privacy</a> · <a href="https://github.com/ImTheSquid/george" rel="noopener">source</a>
+</footer>
