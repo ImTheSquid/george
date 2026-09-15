@@ -342,8 +342,9 @@ export default defineContentScript({
 
 		// Click a highlight → expand its card. Click elsewhere (outside our UI) → collapse.
 		ctx.addEventListener(document, 'click', (ev) => {
+			// composedPath, not target: a card click re-renders the cards, detaching the target before we run.
+			if (ev.composedPath().includes(root)) return;
 			const target = ev.target as Element | null;
-			if (root.contains(target)) return;
 			const mark = target?.closest?.(`mark[${MARK_ATTR}]`);
 			if (mark) {
 				ev.preventDefault();
