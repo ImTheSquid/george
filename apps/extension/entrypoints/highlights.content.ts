@@ -1,5 +1,6 @@
-// Paints your and your friends' highlights on the page; lets you highlight a
-// selection, optionally with a note, and edit or remove your own.
+// Paints your and your friends' highlights on the page. Notes and comments live
+// in cards in the right margin, aligned with their text; the only thing that
+// floats over the text is the small toolbar shown on a selection.
 import { browser, defineContentScript } from '#imports';
 import { createTextQuoteSelectorMatcher, describeTextQuote, highlightText } from '@apache-annotator/dom';
 import { api, NotConnected, type PageInfo } from '@/utils/api';
@@ -13,6 +14,9 @@ const MINE = 'rgba(241, 200, 87, 0.55)';
 const FRIEND = 'rgba(104, 119, 208, 0.35)';
 const FONT = 'font:13px/1.4 system-ui,-apple-system,sans-serif;color:#1a1a1a';
 const BTN = `${FONT};padding:4px 8px;background:#f1c857;border:0;border-radius:4px;cursor:pointer`;
+const BTN_SOFT = `${BTN};background:#eee`;
+const INPUT = `${FONT};width:100%;box-sizing:border-box;padding:5px 6px;border:1px solid #ccc;border-radius:4px;background:#fff`;
+const CARD_W = 260;
 
 export default defineContentScript({
 	matches: ['<all_urls>'],
@@ -32,101 +36,45 @@ export default defineContentScript({
 		if (!token) return;
 
 		let cleanups: (() => void)[] = [];
-		let byId = new Map<string, Hl>();
 		let lastInfo: PageInfo | null = null;
+		/** Highlight whose card is in edit mode, if any. */
+		let expandedId: string | null = null;
+		let focusNoteOnce = false;
 
-		// After an extension reload the old script lingers; its browser.* calls throw this. Not an error worth logging.
+		// After an extension reload the old script lingers; its browser.* calls throw this. Not worth logging.
 		const stale = (e: unknown) => ctx.isInvalid || (e instanceof Error && /context invalidated/i.test(e.message));
 		const report = (e: unknown) => {
 			if (!stale(e) && !(e instanceof NotConnected)) console.warn('[george]', e);
 		};
-		async function paintAll() {
+
+		// Page-coordinate layer for everything we add, so it scrolls with the content.
+		const root = document.createElement('div');
+		root.setAttribute('style', 'position:absolute;z-index:2147483647;top:0;left:0;width:0;height:0');
+		const cardsLayer = document.createElement('div');
+		const toolbar = document.createElement('div');
+		root.append(cardsLayer, toolbar);
+		document.documentElement.append(root);
+		ctx.onInvalidated(() => {
+			for (const c of cleanups) c();
+			cleanups = [];
+			root.remove();
+		});
+
+		// ---- highlights ------------------------------------------------------------------
+
+		async function refresh() {
 			if (ctx.isInvalid) return;
 			for (const c of cleanups) c();
 			cleanups = [];
-			let info: PageInfo;
 			try {
-				info = await api.page(location.href);
+				lastInfo = await api.page(location.href);
 			} catch (e) {
 				report(e);
 				return;
 			}
 			if (ctx.isInvalid) return;
-			lastInfo = info;
-			byId = new Map(info.highlights.map((h) => [h.highlight.id, h]));
-			for (const h of info.highlights) await paint(h);
+			for (const h of lastInfo.highlights) await paint(h);
 			layoutCards();
-		}
-
-		// ---- margin cards: notes and comments always visible beside the text -----------------
-
-		const cardsLayer = document.createElement('div');
-		const CARD_W = 260;
-
-		function commentsFor(type: 'highlight' | 'comment', id: string, depth = 0): { name: string; text: string; depth: number }[] {
-			const out: { name: string; text: string; depth: number }[] = [];
-			for (const c of (lastInfo?.comments ?? []).filter((c) => c.subjectType === type && c.subjectId === id)) {
-				out.push({ name: c.mine ? 'you' : c.user.displayName ?? c.user.username, text: c.text, depth });
-				out.push(...commentsFor('comment', c.id, depth + 1));
-			}
-			return out;
-		}
-
-		function layoutCards() {
-			cardsLayer.replaceChildren();
-			const viewportW = document.documentElement.clientWidth;
-			if (viewportW < 700 || !lastInfo) return;
-
-			const entries: { top: number; left: number; el: HTMLElement }[] = [];
-			for (const h of lastInfo.highlights) {
-				const comments = commentsFor('highlight', h.highlight.id);
-				if (!h.highlight.note && comments.length === 0) continue;
-				const mark = document.querySelector(`mark[${MARK_ATTR}="${h.highlight.id}"]`);
-				if (!mark) continue;
-				const rect = mark.getBoundingClientRect();
-				// Sit just right of the text column the highlight lives in.
-				const block = mark.closest('p, li, blockquote, h1, h2, h3, h4, h5, h6, pre, td, article, section, div') ?? mark;
-				const columnRight = block.getBoundingClientRect().right;
-				const left = Math.min(columnRight + 16, viewportW - CARD_W - 8) + window.scrollX;
-
-				const card = document.createElement('div');
-				card.setAttribute(
-					'style',
-					`position:absolute;width:${CARD_W}px;box-sizing:border-box;padding:8px 10px;background:#fff;${FONT};font-size:12px;` +
-						'border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.25);cursor:pointer'
-				);
-				const author = document.createElement('div');
-				author.setAttribute('style', 'font-weight:600;margin-bottom:2px');
-				author.textContent = h.mine ? 'you' : h.user.displayName ?? h.user.username;
-				card.append(author);
-				if (h.highlight.note) {
-					const note = document.createElement('div');
-					note.setAttribute('style', 'white-space:pre-wrap');
-					note.textContent = h.highlight.note;
-					card.append(note);
-				}
-				for (const c of comments) {
-					const row = document.createElement('div');
-					row.setAttribute('style', `margin:4px 0 0 ${Math.min(c.depth, 3) * 10}px;padding-top:4px;border-top:1px solid #eee`);
-					const n = document.createElement('span');
-					n.setAttribute('style', 'color:#666');
-					n.textContent = `${c.name}: `;
-					row.append(n, document.createTextNode(c.text));
-					card.append(row);
-				}
-				card.addEventListener('click', () => openPopover(mark, h));
-				entries.push({ top: rect.top + window.scrollY, left, el: card });
-			}
-
-			entries.sort((a, b) => a.top - b.top);
-			let cursor = 0;
-			for (const e of entries) {
-				cardsLayer.append(e.el);
-				const top = Math.max(e.top, cursor);
-				e.el.style.left = `${e.left}px`;
-				e.el.style.top = `${top}px`;
-				cursor = top + e.el.offsetHeight + 8;
-			}
 		}
 
 		async function paint(h: Hl) {
@@ -151,199 +99,205 @@ export default defineContentScript({
 			browser.runtime.sendMessage({ type: 'george:page-changed' } satisfies Message).catch(() => {});
 		}
 
-		// ---- floating UI: selection toolbar + note popover -------------------------------
-
-		// Absolutely positioned in page coordinates so the UI scrolls with the text it is anchored to.
-		const root = document.createElement('div');
-		root.setAttribute('style', 'position:absolute;z-index:2147483647;top:0;left:0;width:0;height:0');
-		document.documentElement.append(root);
-		root.append(cardsLayer);
-		ctx.onInvalidated(() => {
-			for (const c of cleanups) c();
-			cleanups = [];
-			root.remove();
-		});
-
-		const toolbar = document.createElement('div');
-		toolbar.setAttribute('style', 'position:absolute;display:none;gap:4px;box-shadow:0 1px 4px rgba(0,0,0,.3);border-radius:4px');
-		const hlBtn = document.createElement('button');
-		hlBtn.textContent = 'highlight';
-		hlBtn.setAttribute('style', BTN);
-		const noteBtn = document.createElement('button');
-		noteBtn.textContent = '+ note';
-		noteBtn.setAttribute('style', BTN);
-		toolbar.append(hlBtn, noteBtn);
-
-		const popover = document.createElement('div');
-		popover.setAttribute(
-			'style',
-			`position:absolute;display:none;flex-direction:column;gap:6px;width:280px;padding:8px;background:#fff;${FONT};` +
-				'border:1px solid #ddd;border-radius:6px;box-shadow:0 2px 10px rgba(0,0,0,.25)'
-		);
-		const who = document.createElement('div');
-		who.setAttribute('style', 'color:#666;font-size:12px');
-		const noteView = document.createElement('div');
-		noteView.setAttribute('style', 'white-space:pre-wrap');
-		const textarea = document.createElement('textarea');
-		textarea.placeholder = 'Your note (shown with the highlight)';
-		textarea.rows = 3;
-		textarea.setAttribute('style', `${FONT};width:100%;box-sizing:border-box;padding:6px;border:1px solid #ccc;border-radius:4px;resize:vertical;background:#fff`);
-		const actions = document.createElement('div');
-		actions.setAttribute('style', 'display:flex;gap:6px;justify-content:flex-end');
-		const saveBtn = document.createElement('button');
-		saveBtn.textContent = 'Save';
-		saveBtn.setAttribute('style', BTN);
-		const removeBtn = document.createElement('button');
-		removeBtn.textContent = 'Remove';
-		removeBtn.setAttribute('style', `${BTN};background:#eee`);
-		const cancelBtn = document.createElement('button');
-		cancelBtn.textContent = 'Cancel';
-		cancelBtn.setAttribute('style', `${BTN};background:#eee`);
-		actions.append(removeBtn, cancelBtn, saveBtn);
-		// Comment thread on an existing highlight
-		const commentsBox = document.createElement('div');
-		commentsBox.setAttribute('style', 'display:none;flex-direction:column;gap:4px;max-height:200px;overflow:auto;border-top:1px solid #eee;padding-top:6px');
-		const replyRow = document.createElement('div');
-		replyRow.setAttribute('style', 'display:none;gap:6px');
-		const replyInput = document.createElement('input');
-		replyInput.placeholder = 'Add a comment…';
-		const status = document.createElement('div');
-		status.setAttribute('style', 'display:none;color:#c0392b;font-size:12px');
-		const showError = (e: unknown) => {
-			report(e);
-			if (stale(e)) return;
-			status.textContent = e instanceof Error ? e.message : String(e);
-			status.style.display = 'block';
-		};
-		replyInput.setAttribute('style', `${FONT};flex:1;padding:5px 6px;border:1px solid #ccc;border-radius:4px;background:#fff`);
-		const replyBtn = document.createElement('button');
-		replyBtn.textContent = 'Reply';
-		replyBtn.setAttribute('style', BTN);
-		replyRow.append(replyInput, replyBtn);
-		popover.append(who, noteView, textarea, actions, commentsBox, replyRow, status);
-		root.append(toolbar, popover);
-
-		function renderComments(h: Hl) {
-			commentsBox.replaceChildren();
-			const all = lastInfo?.comments ?? [];
-			const walk = (type: 'highlight' | 'comment', id: string, depth: number) => {
-				for (const c of all.filter((c) => c.subjectType === type && c.subjectId === id)) {
-					const row = document.createElement('div');
-					row.setAttribute('style', `margin-left:${Math.min(depth, 4) * 10}px`);
-					const name = document.createElement('span');
-					name.setAttribute('style', 'color:#666;font-size:12px');
-					name.textContent = c.mine ? 'you' : c.user.displayName ?? c.user.username;
-					const text = document.createElement('div');
-					text.setAttribute('style', 'white-space:pre-wrap');
-					text.textContent = c.text;
-					row.append(name, text);
-					if (c.mine) {
-						const del = document.createElement('button');
-						del.textContent = 'delete';
-						del.setAttribute('style', `${FONT};color:#666;font-size:12px;background:none;border:0;padding:0 0 0 6px;cursor:pointer;text-decoration:underline`);
-						del.addEventListener('click', async () => {
-							await api.deleteComment(c.id).catch(report);
-							await paintAll();
-							const fresh = byId.get(h.highlight.id);
-							if (fresh) renderComments(fresh);
-						});
-						name.append(del);
-					}
-					commentsBox.append(row);
-					walk('comment', c.id, depth + 1);
-				}
-			};
-			walk('highlight', h.highlight.id, 0);
-			commentsBox.style.display = commentsBox.childElementCount ? 'flex' : 'none';
+		function markFor(id: string): Element | null {
+			return document.querySelector(`mark[${MARK_ATTR}="${id}"]`);
 		}
 
-		replyBtn.addEventListener('click', async () => {
-			if (!replyInput.value.trim()) return;
-			if (!editing) return showError(new Error('Lost track of the highlight; click it again.'));
-			const h = editing;
-			replyBtn.disabled = true;
-			try {
-				await api.comment({ subjectType: 'highlight', subjectId: h.highlight.id, text: replyInput.value });
-				replyInput.value = '';
-				await paintAll();
-				const fresh = byId.get(h.highlight.id);
-				if (fresh) renderComments(fresh);
-			} catch (e) {
-				showError(e);
-			} finally {
-				replyBtn.disabled = false;
+		// ---- margin cards ----------------------------------------------------------------
+
+		function commentsFor(type: 'highlight' | 'comment', id: string, depth = 0) {
+			const out: { id: string; name: string; text: string; depth: number; mine: boolean }[] = [];
+			for (const c of (lastInfo?.comments ?? []).filter((c) => c.subjectType === type && c.subjectId === id)) {
+				out.push({ id: c.id, name: c.mine ? 'you' : c.user.displayName ?? c.user.username, text: c.text, depth, mine: c.mine });
+				out.push(...commentsFor('comment', c.id, depth + 1));
 			}
-		});
-		replyInput.addEventListener('keydown', (e) => {
-			if (e.key === 'Enter') replyBtn.click();
-			e.stopPropagation();
-		});
-
-		let pending: Range | null = null; // current selection, for new highlights
-		let editing: Hl | null = null; // existing highlight being viewed/edited
-		/** What the visible popover/toolbar is anchored to, so it can follow on scroll/resize. */
-		let anchor: Element | Range | null = null;
-
-		function place(el: HTMLElement, rect: DOMRect, display: string) {
-			el.style.display = display;
-			const w = el.offsetWidth || 280;
-			const left = Math.min(Math.max(4, rect.left), window.innerWidth - w - 4);
-			const above = rect.top - el.offsetHeight - 8;
-			const top = above > 4 ? above : rect.bottom + 8;
-			el.style.left = `${left + window.scrollX}px`;
-			el.style.top = `${top + window.scrollY}px`;
+			return out;
 		}
 
-		function reposition() {
+		function el<K extends keyof HTMLElementTagNameMap>(tag: K, style: string, text?: string): HTMLElementTagNameMap[K] {
+			const e = document.createElement(tag);
+			e.setAttribute('style', style);
+			if (text !== undefined) e.textContent = text;
+			return e;
+		}
+
+		function buildCard(h: Hl, expanded: boolean): HTMLElement {
+			const card = el(
+				'div',
+				`position:absolute;width:${CARD_W}px;box-sizing:border-box;padding:8px 10px;background:#fff;${FONT};font-size:12px;` +
+					`border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.25);${expanded ? '' : 'cursor:pointer'}`
+			);
+			const author = h.mine ? 'you' : h.user.displayName ?? h.user.username;
+			card.append(el('div', 'font-weight:600;margin-bottom:2px', author));
+
+			const comments = commentsFor('highlight', h.highlight.id);
+
+			if (!expanded) {
+				if (h.highlight.note) card.append(el('div', 'white-space:pre-wrap', h.highlight.note));
+				for (const c of comments) {
+					const row = el('div', `margin:4px 0 0 ${Math.min(c.depth, 3) * 10}px;padding-top:4px;border-top:1px solid #eee`);
+					row.append(el('span', 'color:#666', `${c.name}: `), document.createTextNode(c.text));
+					card.append(row);
+				}
+				card.addEventListener('click', () => expand(h.highlight.id));
+				return card;
+			}
+
+			// Expanded: edit own note, comment, remove.
+			const fail = el('div', 'display:none;color:#c0392b');
+			const showError = (e: unknown) => {
+				report(e);
+				if (stale(e)) return;
+				fail.textContent = e instanceof Error ? e.message : String(e);
+				fail.style.display = 'block';
+			};
+
+			if (h.mine) {
+				const note = el('textarea', `${INPUT};resize:vertical;margin-top:4px`);
+				note.rows = 3;
+				note.placeholder = 'Your note';
+				note.value = h.highlight.note ?? '';
+				const row = el('div', 'display:flex;gap:6px;justify-content:flex-end;margin-top:6px');
+				const remove = el('button', BTN_SOFT, 'Remove');
+				const save = el('button', BTN, 'Save');
+				remove.addEventListener('click', async () => {
+					try {
+						await api.deleteHighlight(h.highlight.id);
+						expandedId = null;
+						await refresh();
+						notify();
+					} catch (e) {
+						showError(e);
+					}
+				});
+				save.addEventListener('click', async () => {
+					try {
+						await api.setNote(h.highlight.id, note.value.trim() || null);
+						expandedId = null;
+						await refresh();
+					} catch (e) {
+						showError(e);
+					}
+				});
+				note.addEventListener('keydown', (e) => {
+					e.stopPropagation();
+					if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) save.click();
+				});
+				row.append(remove, save);
+				card.append(note, row);
+				if (focusNoteOnce) {
+					focusNoteOnce = false;
+					queueMicrotask(() => note.focus());
+				}
+			} else if (h.highlight.note) {
+				card.append(el('div', 'white-space:pre-wrap', h.highlight.note));
+			}
+
+			if (comments.length) {
+				const list = el('div', 'margin-top:6px;border-top:1px solid #eee');
+				for (const c of comments) {
+					const row = el('div', `margin:4px 0 0 ${Math.min(c.depth, 3) * 10}px;padding-top:4px`);
+					row.append(el('span', 'color:#666', `${c.name}: `), document.createTextNode(c.text));
+					if (c.mine) {
+						const del = el('button', `${FONT};font-size:11px;color:#666;background:none;border:0;padding:0 0 0 6px;cursor:pointer;text-decoration:underline`, 'delete');
+						del.addEventListener('click', async () => {
+							try {
+								await api.deleteComment(c.id);
+								await refresh();
+							} catch (e) {
+								showError(e);
+							}
+						});
+						row.append(del);
+					}
+					list.append(row);
+				}
+				card.append(list);
+			}
+
+			const replyRow = el('div', 'display:flex;gap:6px;margin-top:6px');
+			const input = el('input', `${INPUT};flex:1`);
+			input.placeholder = comments.length ? 'Reply…' : 'Add a comment…';
+			const reply = el('button', BTN, 'Reply');
+			reply.addEventListener('click', async () => {
+				const text = input.value.trim();
+				if (!text) return;
+				reply.disabled = true;
+				try {
+					await api.comment({ subjectType: 'highlight', subjectId: h.highlight.id, text });
+					await refresh();
+				} catch (e) {
+					showError(e);
+					reply.disabled = false;
+				}
+			});
+			input.addEventListener('keydown', (e) => {
+				e.stopPropagation();
+				if (e.key === 'Enter') reply.click();
+			});
+			replyRow.append(input, reply);
+			const close = el('button', `${FONT};font-size:11px;color:#666;background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;align-self:flex-start;margin-top:6px`, 'close');
+			close.addEventListener('click', () => {
+				expandedId = null;
+				layoutCards();
+			});
+			card.append(replyRow, fail, close);
+			return card;
+		}
+
+		function layoutCards() {
+			cardsLayer.replaceChildren();
+			const viewportW = document.documentElement.clientWidth;
+			if (viewportW < 700 || !lastInfo) return;
+
+			const entries: { top: number; left: number; el: HTMLElement }[] = [];
+			for (const h of lastInfo.highlights) {
+				const expanded = h.highlight.id === expandedId;
+				const hasContent = !!h.highlight.note || commentsFor('highlight', h.highlight.id).length > 0;
+				if (!expanded && !hasContent) continue;
+				const mark = markFor(h.highlight.id);
+				if (!mark) continue;
+				const rect = mark.getBoundingClientRect();
+				// Sit just right of the text column the highlight lives in.
+				const block = mark.closest('p, li, blockquote, h1, h2, h3, h4, h5, h6, pre, td, article, section, div') ?? mark;
+				const left = Math.min(block.getBoundingClientRect().right + 16, viewportW - CARD_W - 8) + window.scrollX;
+				entries.push({ top: rect.top + window.scrollY, left, el: buildCard(h, expanded) });
+			}
+
+			entries.sort((a, b) => a.top - b.top);
+			let cursor = 0;
+			for (const e of entries) {
+				cardsLayer.append(e.el);
+				const top = Math.max(e.top, cursor);
+				e.el.style.left = `${e.left}px`;
+				e.el.style.top = `${top}px`;
+				cursor = top + e.el.offsetHeight + 8;
+			}
+		}
+
+		function expand(id: string) {
+			expandedId = id;
 			layoutCards();
-			if (!anchor) return;
-			const rect = anchor.getBoundingClientRect();
-			if (popover.style.display !== 'none') place(popover, rect, 'flex');
-			else if (toolbar.style.display !== 'none') place(toolbar, rect, 'flex');
-		}
-		ctx.addEventListener(window, 'resize', reposition, { passive: true });
-		// Late layout shifts (images, fonts) move the text; follow them.
-		ctx.addEventListener(window, 'load', layoutCards);
-		ctx.setTimeout(layoutCards, 1500);
-
-		function hideAll() {
-			toolbar.style.display = 'none';
-			popover.style.display = 'none';
-			editing = null;
-			anchor = null;
 		}
 
-		function openPopover(at: Element | Range, h: Hl | null) {
-			anchor = at;
-			status.style.display = 'none';
-			const rect = at.getBoundingClientRect();
-			editing = h;
-			const own = !h || h.mine;
-			who.textContent = h ? (h.mine ? 'your highlight' : `${h.user.displayName ?? h.user.username}'s highlight`) : 'new highlight';
-			noteView.textContent = h?.highlight.note ?? '';
-			noteView.style.display = !own && h?.highlight.note ? 'block' : 'none';
-			textarea.value = h?.highlight.note ?? '';
-			textarea.style.display = own ? 'block' : 'none';
-			saveBtn.style.display = own ? 'inline-block' : 'none';
-			removeBtn.style.display = h?.mine ? 'inline-block' : 'none';
-			replyRow.style.display = h ? 'flex' : 'none';
-			if (h) renderComments(h);
-			else commentsBox.style.display = 'none';
-			toolbar.style.display = 'none';
-			place(popover, rect, 'flex');
-			if (own) textarea.focus();
-		}
+		// ---- selection toolbar (the only thing that floats over the text) ----------------
 
-		async function createHighlight(range: Range, note?: string) {
-			const sel = await describeTextQuote(range, document.body);
-			await api.highlight({ url: location.href, title: document.title, exact: sel.exact, prefix: sel.prefix, suffix: sel.suffix, note });
-			document.getSelection()?.removeAllRanges();
-			await paintAll();
-			notify();
+		toolbar.setAttribute('style', 'position:absolute;display:none;gap:4px;box-shadow:0 1px 4px rgba(0,0,0,.3);border-radius:4px');
+		const hlBtn = el('button', BTN, 'highlight');
+		const noteBtn = el('button', BTN, '+ note');
+		toolbar.append(hlBtn, noteBtn);
+		let pending: Range | null = null;
+
+		function showToolbar(range: Range) {
+			const rect = range.getBoundingClientRect();
+			toolbar.style.display = 'flex';
+			const w = toolbar.offsetWidth || 120;
+			const left = Math.min(Math.max(4, rect.left + rect.width / 2 - w / 2), document.documentElement.clientWidth - w - 4);
+			toolbar.style.left = `${left + window.scrollX}px`;
+			toolbar.style.top = `${Math.max(4, rect.top - toolbar.offsetHeight - 8) + window.scrollY}px`;
 		}
 
 		ctx.addEventListener(document, 'selectionchange', () => {
-			if (popover.style.display !== 'none') return;
 			const sel = document.getSelection();
 			if (!sel || sel.isCollapsed || sel.rangeCount === 0 || !sel.toString().trim()) {
 				toolbar.style.display = 'none';
@@ -352,75 +306,70 @@ export default defineContentScript({
 			}
 			const range = sel.getRangeAt(0);
 			const container = range.commonAncestorContainer;
-			const el = container instanceof Element ? container : container.parentElement;
-			if (!el || el.closest('input, textarea, [contenteditable]') || root.contains(el)) return;
+			const node = container instanceof Element ? container : container.parentElement;
+			if (!node || node.closest('input, textarea, [contenteditable]') || root.contains(node)) return;
 			pending = range.cloneRange();
-			anchor = pending;
-			place(toolbar, range.getBoundingClientRect(), 'flex');
+			showToolbar(range);
 		});
 
-		for (const b of [hlBtn, noteBtn, saveBtn, removeBtn, cancelBtn, replyBtn]) b.addEventListener('mousedown', (e) => e.preventDefault());
+		for (const b of [hlBtn, noteBtn]) b.addEventListener('mousedown', (e) => e.preventDefault());
 
-		hlBtn.addEventListener('click', async () => {
-			if (!pending) return;
-			const r = pending;
-			hideAll();
-			await createHighlight(r).catch(report);
-		});
-
-		noteBtn.addEventListener('click', () => {
-			if (!pending) return;
-			openPopover(pending, null);
-		});
-
-		saveBtn.addEventListener('click', async () => {
-			const note = textarea.value.trim();
-			try {
-				if (editing) {
-					await api.setNote(editing.highlight.id, note || null);
-					await paintAll();
-				} else if (pending) {
-					await createHighlight(pending, note || undefined);
-				}
-			} catch (e) {
-				return showError(e);
+		async function createHighlight(range: Range, thenEdit: boolean) {
+			toolbar.style.display = 'none';
+			const sel = await describeTextQuote(range, document.body);
+			const { id } = await api.highlight({
+				url: location.href,
+				title: document.title,
+				exact: sel.exact,
+				prefix: sel.prefix,
+				suffix: sel.suffix
+			});
+			document.getSelection()?.removeAllRanges();
+			if (thenEdit) {
+				expandedId = id;
+				focusNoteOnce = true;
 			}
-			hideAll();
-		});
-
-		removeBtn.addEventListener('click', async () => {
-			if (!editing?.mine) return;
-			await api.deleteHighlight(editing.highlight.id).catch(report);
-			hideAll();
-			await paintAll();
+			await refresh();
 			notify();
+		}
+
+		hlBtn.addEventListener('click', () => {
+			if (pending) createHighlight(pending, false).catch(report);
+		});
+		noteBtn.addEventListener('click', () => {
+			if (pending) createHighlight(pending, true).catch(report);
 		});
 
-		cancelBtn.addEventListener('click', hideAll);
-
+		// Click a highlight → expand its card. Click elsewhere (outside our UI) → collapse.
 		ctx.addEventListener(document, 'click', (ev) => {
 			const target = ev.target as Element | null;
 			if (root.contains(target)) return;
 			const mark = target?.closest?.(`mark[${MARK_ATTR}]`);
 			if (mark) {
-				const h = byId.get(mark.getAttribute(MARK_ATTR)!);
-				if (h) {
-					ev.preventDefault();
-					openPopover(mark, h);
-					return;
-				}
+				ev.preventDefault();
+				expand(mark.getAttribute(MARK_ATTR)!);
+				return;
 			}
-			if (popover.style.display !== 'none') hideAll();
+			if (expandedId) {
+				expandedId = null;
+				layoutCards();
+			}
+		});
+		ctx.addEventListener(document, 'keydown', (ev) => {
+			if (ev.key === 'Escape' && expandedId) {
+				expandedId = null;
+				layoutCards();
+			}
 		});
 
-		ctx.addEventListener(document, 'keydown', (ev) => {
-			if (ev.key === 'Escape') hideAll();
-		});
+		ctx.addEventListener(window, 'resize', layoutCards, { passive: true });
+		ctx.addEventListener(window, 'load', layoutCards);
+		ctx.setTimeout(layoutCards, 1500);
 
 		browser.runtime.onMessage.addListener((raw: unknown) => {
-			if ((raw as Message).type === 'george:refresh') paintAll();
+			if ((raw as Message).type === 'george:refresh') refresh();
 		});
 
-		await paintAll();
+		await refresh();
 	}
 });
