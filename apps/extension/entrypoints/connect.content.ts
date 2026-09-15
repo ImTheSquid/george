@@ -4,7 +4,7 @@ import { browser, defineContentScript } from '#imports';
 import type { Message } from '@/utils/messages';
 
 export default defineContentScript({
-	matches: ['https://george.jackhogan.me/*', 'http://localhost:5173/*'],
+	matches: ['https://george.jackhogan.me/*', ...(import.meta.env.DEV ? ['http://localhost:5173/*'] : [])],
 	runAt: 'document_start',
 	main(ctx) {
 		ctx.addEventListener(window, 'message', (event: MessageEvent) => {
