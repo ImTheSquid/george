@@ -30,6 +30,9 @@ export type Comment = {
 	user: User;
 	mine: boolean;
 };
+export type FeedItem =
+	| { kind: 'link'; user: User; link: Link; createdAt: string }
+	| { kind: 'highlight'; user: User; highlight: Highlight; createdAt: string };
 export type PageInfo = {
 	url: string;
 	unsupported: boolean;
@@ -71,6 +74,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 
 export const api = {
 	me: () => call<User>('GET', '/api/me'),
+	feed: (limit = 50) => call<{ items: FeedItem[] }>('GET', `/api/feed?limit=${limit}`),
 	page: (url: string) => call<PageInfo>('GET', `/api/link?url=${encodeURIComponent(url)}`),
 	save: (input: { url: string; title?: string; toRead?: boolean; favorite?: boolean }) =>
 		call<{ id: string }>('POST', '/api/link', input),

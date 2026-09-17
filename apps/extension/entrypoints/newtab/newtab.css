@@ -1,0 +1,87 @@
+/* Mirrors apps/web/src/app.css so the new tab reads as the same product. */
+:root {
+	color-scheme: light dark;
+	--fg: light-dark(#1a1a1a, #e8e8e8);
+	--muted: light-dark(#666, #999);
+	--bg: light-dark(#fff, #141414);
+	--line: light-dark(#e3e3e3, #2a2a2a);
+	--accent: light-dark(#b8860b, #e0b23a);
+	font-family: system-ui, -apple-system, sans-serif;
+	/* Larger than the site's 15px: this fills the screen instead of sharing it with other tabs. */
+	font-size: 17px;
+	line-height: 1.5;
+	color: var(--fg);
+	background: var(--bg);
+}
+
+body {
+	margin: 0;
+}
+
+header {
+	display: flex;
+	align-items: baseline;
+	gap: 1.5rem;
+	max-width: 46rem;
+	margin: 0 auto;
+	padding: 1.5rem 1rem 0.5rem;
+}
+
+header nav {
+	display: flex;
+	gap: 1rem;
+	margin-left: auto;
+	font-size: 0.9em;
+}
+
+.brand {
+	font-weight: 700;
+	font-size: 1.2rem;
+	color: var(--accent);
+	text-decoration: none;
+}
+
+main {
+	max-width: 46rem;
+	margin: 0 auto;
+	padding: 0 1rem 4rem;
+}
+
+a {
+	color: inherit;
+}
+
+.muted {
+	color: var(--muted);
+}
+
+.error {
+	color: #c0392b;
+	font-size: 0.9em;
+}
+
+.item {
+	padding: 1rem 0;
+	border-bottom: 1px solid var(--line);
+}
+
+.item .meta {
+	color: var(--muted);
+	font-size: 0.9em;
+}
+
+.item .title {
+	font-weight: 600;
+	font-size: 1.1rem;
+	text-decoration: none;
+}
+
+.item .title:hover {
+	text-decoration: underline;
+}
+
+blockquote {
+	margin: 0.4rem 0;
+	padding-left: 0.75rem;
+	border-left: 3px solid var(--accent);
+}

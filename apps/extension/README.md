@@ -2,6 +2,7 @@
 
 WXT + Svelte, Manifest V3 (Chromium/Helium; Firefox via `pnpm build:firefox`).
 
+- New tab page: your feed. Cached locally so it paints before the server answers.
 - Toolbar popup: save / read-later / favorite the current page, see which friends saved it and their highlights.
 - `Ctrl+Shift+S` / `⌘⇧S`: toggle save.
 - Select text on any page → "highlight". Your and your friends' highlights are painted on the page. Click one of yours to remove it.

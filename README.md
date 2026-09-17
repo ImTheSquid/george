@@ -9,7 +9,7 @@ Status: under construction. See `deploy/README.md` for the server side.
 ## Layout
 
 - `apps/web` — SvelteKit app: passkey auth, feed, profiles, invites (SQLite via Drizzle)
-- `apps/extension` — browser extension (WXT)
+- `apps/extension` — browser extension (WXT); replaces the new tab page with your feed
 - `packages/shared` — URL normalization shared by app and extension
 - `tools/curius` — export your data from curius.app
 - `deploy/` — docker compose + nginx
