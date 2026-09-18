@@ -12,6 +12,12 @@
 	<h1>george</h1>
 	<p>Save pages from your browser. Your friends see what you save and highlight; you see theirs.</p>
 	<p><a href="/signup">Sign up</a> with a username and a passkey, or <a href="/login">log in</a>.</p>
+	<p>
+		Saving happens in the browser: get the
+		<a href="https://chromewebstore.google.com/detail/george/iocpapkgcmoaijcjlocmppldpnagiilh" rel="noopener">
+			Chrome extension
+		</a>.
+	</p>
 {:else if data.feed.length === 0}
 	<p class="muted">Nothing here yet. <a href="/people">Follow some people</a> to fill your feed.</p>
 {:else}

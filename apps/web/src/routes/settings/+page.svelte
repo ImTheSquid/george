@@ -27,7 +27,12 @@
 </form>
 
 <h2>Browser extension</h2>
-<p class="muted">With the george extension installed, this connects it to your account.</p>
+<p class="muted">
+	With the george extension installed, this connects it to your account. Not installed yet? Get it from the
+	<a href="https://chromewebstore.google.com/detail/george/iocpapkgcmoaijcjlocmppldpnagiilh" rel="noopener">
+		Chrome Web Store
+	</a>.
+</p>
 <form method="POST" action="?/connect" use:enhance>
 	<button>Connect extension</button>
 </form>

@@ -33,5 +33,9 @@
 </main>
 
 <footer class="muted">
-	<a href="/privacy">privacy</a> · <a href="https://github.com/ImTheSquid/george" rel="noopener">source</a>
+	<a href="/privacy">privacy</a> ·
+	<a href="https://chromewebstore.google.com/detail/george/iocpapkgcmoaijcjlocmppldpnagiilh" rel="noopener">
+		extension
+	</a> ·
+	<a href="https://github.com/ImTheSquid/george" rel="noopener">source</a>
 </footer>
