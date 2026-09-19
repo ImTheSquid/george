@@ -11,6 +11,7 @@ import {
 	type RegistrationResponseJSON
 } from '@simplewebauthn/server';
 import type { Cookies } from '@sveltejs/kit';
+import { USERNAME_RE, USERNAME_RULE } from '@george/shared';
 import { count, eq, lt } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { challenge, credential, user } from '$lib/server/db/schema';
@@ -22,7 +23,6 @@ export class AuthError extends Error {}
 
 const CHALLENGE_COOKIE = 'george_wa';
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
-export const USERNAME_RE = /^[a-z0-9](?:[a-z0-9-]{1,28}[a-z0-9])?$/;
 
 function storeChallenge(
 	cookies: Cookies,
@@ -64,7 +64,7 @@ function takeChallenge(cookies: Cookies, kind: 'signup' | 'login') {
 }
 
 function validateSignup(username: string, inviteCode: string) {
-	if (!USERNAME_RE.test(username)) throw new AuthError('Usernames are 2–30 lowercase letters, digits, or hyphens.');
+	if (!USERNAME_RE.test(username)) throw new AuthError(`Usernames are ${USERNAME_RULE}`);
 	if (db.select({ id: user.id }).from(user).where(eq(user.username, username)).get()) {
 		throw new AuthError('That username is taken.');
 	}

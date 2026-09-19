@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { USERNAME_RE, USERNAME_RULE } from '@george/shared';
 	import { signupWithPasskey } from '$lib/auth-client';
 
 	let { data } = $props();
@@ -11,7 +12,7 @@
 	let error = $state<string | null>(null);
 
 	const normalized = $derived(username.trim().toLowerCase());
-	const valid = $derived(/^[a-z0-9](?:[a-z0-9-]{1,28}[a-z0-9])?$/.test(normalized));
+	const valid = $derived(USERNAME_RE.test(normalized));
 
 	async function signup(ev: SubmitEvent) {
 		ev.preventDefault();
@@ -41,7 +42,7 @@
 		<input type="text" bind:value={username} autocomplete="username" autocapitalize="off" spellcheck="false" />
 	</label>
 	{#if username && !valid}
-		<p class="muted">2–30 lowercase letters, digits, or hyphens.</p>
+		<p class="muted">{USERNAME_RULE}</p>
 	{/if}
 	{#if data.inviteRequired}
 		<label>
