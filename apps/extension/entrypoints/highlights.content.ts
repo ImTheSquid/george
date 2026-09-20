@@ -4,8 +4,9 @@
 import { browser, defineContentScript } from '#imports';
 import { createTextQuoteSelectorMatcher, describeTextQuote, highlightText } from '@apache-annotator/dom';
 import { api, NotConnected, type PageInfo } from '@/utils/api';
-import { getSettings, isWebUrl } from '@/utils/settings';
-import type { Message } from '@/utils/messages';
+import { getSettings, isWebUrl, siteVerdictForPage, siteVerdictForUrl } from '@/utils/settings';
+import { isHtmlDocument, looksLikeApp } from '@/utils/sites';
+import type { Message, SiteStateResponse } from '@/utils/messages';
 
 type Hl = PageInfo['highlights'][number];
 
@@ -17,18 +18,14 @@ const BTN = `${FONT};padding:4px 8px;background:#f1c857;border:0;border-radius:4
 const BTN_SOFT = `${BTN};background:#eee`;
 const INPUT = `${FONT};width:100%;box-sizing:border-box;padding:5px 6px;border:1px solid #ccc;border-radius:4px;background:#fff`;
 const CARD_W = 260;
+/** Short enough that a late-rendering page gets re-judged, long enough to absorb a burst. */
+const DOC_CHECK_TTL = 2000;
 
 export default defineContentScript({
 	matches: ['<all_urls>'],
-	excludeMatches: [
-		'*://localhost/*',
-		'*://george.jackhogan.me/*',
-		'*://*.messenger.com/*',
-		'*://calendar.google.com/*',
-		'*://mail.google.com/*',
-		'*://chat.openai.com/*',
-		'*://chatgpt.com/*'
-	],
+	// Only the origins that must never load the script at all. Every other site is decided
+	// at runtime by the gate in utils/sites.ts, which the popup can override per host.
+	excludeMatches: ['*://localhost/*', '*://george.jackhogan.me/*'],
 	runAt: 'document_idle',
 	async main(ctx) {
 		if (!isWebUrl(location.href)) return;
@@ -53,12 +50,26 @@ export default defineContentScript({
 		const cardsLayer = document.createElement('div');
 		const toolbar = document.createElement('div');
 		root.append(cardsLayer, toolbar);
-		document.documentElement.append(root);
-		ctx.onInvalidated(() => {
-			for (const c of cleanups) c();
-			cleanups = [];
-			root.remove();
-		});
+		ctx.onInvalidated(detach);
+
+		// ---- the gate --------------------------------------------------------------------
+
+		/** The user's explicit choice for this host, if any. Overrides the document check. */
+		let forced: boolean | undefined;
+		/**
+		 * The document check, cached briefly. At document_idle an app shell has not rendered
+		 * yet, so the answer has to be taken when it is needed rather than once at startup.
+		 */
+		let docCheck: { at: number; on: boolean } | null = null;
+
+		function highlightable(): boolean {
+			if (forced !== undefined) return forced;
+			const now = Date.now();
+			if (!docCheck || now - docCheck.at > DOC_CHECK_TTL) {
+				docCheck = { at: now, on: isHtmlDocument(document) && !looksLikeApp(document) };
+			}
+			return docCheck.on;
+		}
 
 		// ---- highlights ------------------------------------------------------------------
 
@@ -66,6 +77,11 @@ export default defineContentScript({
 			if (ctx.isInvalid) return;
 			for (const c of cleanups) c();
 			cleanups = [];
+			if (!highlightable()) {
+				lastInfo = null;
+				cardsLayer.replaceChildren();
+				return;
+			}
 			try {
 				lastInfo = await api.page(location.href);
 			} catch (e) {
@@ -309,20 +325,23 @@ export default defineContentScript({
 			toolbar.style.top = `${Math.max(4, rect.top - toolbar.offsetHeight - 8) + window.scrollY}px`;
 		}
 
-		ctx.addEventListener(document, 'selectionchange', () => {
+		function onSelectionChange() {
 			const sel = document.getSelection();
 			if (!sel || sel.isCollapsed || sel.rangeCount === 0 || !sel.toString().trim()) {
 				toolbar.style.display = 'none';
 				pending = null;
 				return;
 			}
+			// Judged here rather than at startup: this is the moment it matters, and by now a
+			// late-rendering app has put its real content in the DOM.
+			if (!highlightable() || lastInfo?.unsupported) return;
 			const range = sel.getRangeAt(0);
 			const container = range.commonAncestorContainer;
 			const node = container instanceof Element ? container : container.parentElement;
 			if (!node || node.closest('input, textarea, [contenteditable]') || root.contains(node)) return;
 			pending = range.cloneRange();
 			showToolbar(range);
-		});
+		}
 
 		for (const b of [hlBtn, noteBtn]) b.addEventListener('mousedown', (e) => e.preventDefault());
 
@@ -353,7 +372,7 @@ export default defineContentScript({
 		});
 
 		// Click a highlight → expand its card. Click elsewhere (outside our UI) → collapse.
-		ctx.addEventListener(document, 'click', (ev) => {
+		function onClick(ev: MouseEvent) {
 			// composedPath, not target: a card click re-renders the cards, detaching the target before we run.
 			if (ev.composedPath().includes(root)) return;
 			const target = ev.target as Element | null;
@@ -367,22 +386,84 @@ export default defineContentScript({
 				expandedId = null;
 				layoutCards();
 			}
-		});
-		ctx.addEventListener(document, 'keydown', (ev) => {
+		}
+
+		function onKeydown(ev: KeyboardEvent) {
 			if (ev.key === 'Escape' && expandedId) {
 				expandedId = null;
 				layoutCards();
 			}
-		});
+		}
 
-		ctx.addEventListener(window, 'resize', layoutCards, { passive: true });
-		ctx.addEventListener(window, 'load', layoutCards);
-		ctx.setTimeout(layoutCards, 1500);
+		// ---- activation --------------------------------------------------------------------
+
+		/** Non-null while we are attached to the page; aborting it drops every listener. */
+		let listeners: AbortController | null = null;
+
+		function attach() {
+			if (listeners || ctx.isInvalid) return;
+			listeners = new AbortController();
+			const { signal } = listeners;
+			document.documentElement.append(root);
+			document.addEventListener('selectionchange', onSelectionChange, { signal });
+			document.addEventListener('click', onClick, { signal });
+			document.addEventListener('keydown', onKeydown, { signal });
+			window.addEventListener('resize', layoutCards, { passive: true, signal });
+			window.addEventListener('load', layoutCards, { signal });
+			ctx.setTimeout(layoutCards, 1500);
+			whenLoaded(() => {
+				if (!listeners) return;
+				refresh().catch(report);
+				// A page that had not rendered yet reads as an app shell; give it one more look
+				// before leaving it alone for good.
+				ctx.setTimeout(() => {
+					if (!lastInfo && listeners && highlightable()) refresh().catch(report);
+				}, 2500);
+			});
+		}
+
+		function detach() {
+			listeners?.abort();
+			listeners = null;
+			for (const c of cleanups) c();
+			cleanups = [];
+			lastInfo = null;
+			expandedId = null;
+			pending = null;
+			docCheck = null;
+			toolbar.style.display = 'none';
+			cardsLayer.replaceChildren();
+			root.remove();
+		}
+
+		function whenLoaded(fn: () => void) {
+			if (document.readyState === 'complete') return void requestAnimationFrame(fn);
+			window.addEventListener('load', () => requestAnimationFrame(fn), { once: true });
+		}
+
+		/** Re-reads the host gate; called at startup and whenever the popup changes something. */
+		async function sync() {
+			if (ctx.isInvalid) return;
+			const v = await siteVerdictForUrl(location.href);
+			forced = v.reason === 'user' ? v.on : undefined;
+			docCheck = null;
+			if (v.on) attach();
+			else detach();
+		}
 
 		browser.runtime.onMessage.addListener((raw: unknown) => {
-			if ((raw as Message).type === 'george:refresh') refresh();
+			const msg = raw as Message;
+			if (msg.type === 'george:site-state') {
+				return siteVerdictForPage(location.href, document) satisfies Promise<SiteStateResponse>;
+			}
+			if (msg.type === 'george:refresh') {
+				const wasAttached = !!listeners;
+				sync().then(() => {
+					if (listeners && wasAttached) refresh().catch(report);
+				}, report);
+			}
 		});
 
-		await refresh();
+		await sync();
 	}
 });

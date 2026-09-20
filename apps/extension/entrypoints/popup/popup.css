@@ -57,6 +57,12 @@ button {
 	cursor: pointer;
 }
 
+button[aria-pressed='true'] {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: #fff;
+}
+
 button.primary {
 	background: var(--accent);
 	border-color: var(--accent);

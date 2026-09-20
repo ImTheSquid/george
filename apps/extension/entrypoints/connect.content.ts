@@ -11,7 +11,9 @@ export default defineContentScript({
 			if (event.source !== window || event.origin !== location.origin) return;
 			const d = event.data;
 			if (d?.type !== 'george:connect' || typeof d.token !== 'string') return;
-			const msg: Message = { type: 'george:set-token', token: d.token, appUrl: d.appUrl ?? location.origin };
+			// The origin is taken from the page we are running on, never from the message, so a
+			// script injected into the app cannot point the token at somewhere else.
+			const msg: Message = { type: 'george:set-token', token: d.token, appUrl: location.origin };
 			browser.runtime.sendMessage(msg).then(() => {
 				window.postMessage({ type: 'george:connected' }, location.origin);
 			});

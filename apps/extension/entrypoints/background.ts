@@ -1,7 +1,9 @@
 import { browser, defineBackground } from '#imports';
 import { api, NotConnected, type PageInfo } from '@/utils/api';
-import { getSettings, isWebUrl, setConnection } from '@/utils/settings';
-import type { GetPageResponse, Message } from '@/utils/messages';
+import { getSettings, isWebUrl, setConnection, siteVerdictForUrl } from '@/utils/settings';
+import { urlHash } from '@george/shared';
+import { isOverridable } from '@/utils/sites';
+import type { GetPageResponse, HashResponse, Message } from '@/utils/messages';
 
 export default defineBackground(() => {
 	// Latest PageInfo per tab, so the popup can render before its own fetch returns.
@@ -18,6 +20,8 @@ export default defineBackground(() => {
 		if (!isWebUrl(url)) return setBadge(tabId, '');
 		const { token } = await getSettings();
 		if (!token) return setBadge(tabId, '');
+		// Nothing useful to show on an app, and this keeps every URL you visit there off the wire.
+		if (!(await siteVerdictForUrl(url)).on) return setBadge(tabId, '');
 		try {
 			const info = await api.page(url);
 			cache.set(tabId, info);
@@ -30,6 +34,9 @@ export default defineBackground(() => {
 
 	async function toggleSave(tab: Browser.tabs.Tab) {
 		if (!tab.id || !isWebUrl(tab.url)) return;
+		// Explicit enough to override a quiet site, but not a LAN address or a URL with a token in it.
+		const verdict = await siteVerdictForUrl(tab.url);
+		if (!verdict.on && !isOverridable(verdict)) return;
 		const { token, appUrl } = await getSettings();
 		if (!token) {
 			await browser.tabs.create({ url: `${appUrl}/settings` });
@@ -76,6 +83,9 @@ export default defineBackground(() => {
 		}
 		if (msg.type === 'george:get-page') {
 			return Promise.resolve({ info: cache.get(msg.tabId) ?? null } satisfies GetPageResponse);
+		}
+		if (msg.type === 'george:hash') {
+			return urlHash(msg.url).then((hash) => ({ hash }) satisfies HashResponse);
 		}
 	});
 });

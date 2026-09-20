@@ -1,8 +1,19 @@
 <script lang="ts">
 	import { browser } from '#imports';
+	import { normalizeUrl } from '@george/shared';
 	import { api, NotConnected, type PageInfo } from '@/utils/api';
-	import { getSettings, isWebUrl, setConnection, DEFAULT_APP_URL } from '@/utils/settings';
-	import type { GetPageResponse, Message } from '@/utils/messages';
+	import {
+		getSettings,
+		getSitePref,
+		hostnameOf,
+		isWebUrl,
+		setConnection,
+		setSitePref,
+		siteVerdictForUrl,
+		DEFAULT_APP_URL
+	} from '@/utils/settings';
+	import { explainVerdict, isOverridable, type SiteVerdict } from '@/utils/sites';
+	import type { GetPageResponse, Message, SiteStateResponse } from '@/utils/messages';
 
 	let appUrl = $state(DEFAULT_APP_URL);
 	let connected = $state(false);
@@ -12,8 +23,20 @@
 	let error = $state<string | null>(null);
 	let busy = $state(false);
 	let manualToken = $state('');
+	let site = $state<SiteVerdict | null>(null);
+	let sitePref = $state<boolean | undefined>(undefined);
 
 	const pageUrl = $derived(tab?.url && isWebUrl(tab.url) ? tab.url : null);
+	const host = $derived(pageUrl ? hostnameOf(pageUrl) : null);
+	/** What the background caches under, since lookups are keyed by the canonical form. */
+	const canonicalUrl = $derived.by(() => {
+		try {
+			return pageUrl ? normalizeUrl(pageUrl) : null;
+		} catch {
+			return null;
+		}
+	});
+	const blocked = $derived(site && !site.on && !isOverridable(site));
 
 	async function load() {
 		error = null;
@@ -25,20 +48,28 @@
 			loading = false;
 			return;
 		}
+		await loadSite();
+		// A private address or a URL carrying a token: nothing about this page goes anywhere,
+		// not even a lookup.
+		if (site && !site.on && !isOverridable(site)) {
+			loading = false;
+			return;
+		}
 		// Render from the background's cache first, then reconcile with the server.
 		if (tab?.id) {
 			const cached = (await browser.runtime
 				.sendMessage({ type: 'george:get-page', tabId: tab.id } satisfies Message)
 				.catch(() => null)) as GetPageResponse | null;
-			if (cached?.info && cached.info.url === pageUrl) {
+			if (cached?.info && cached.info.url === canonicalUrl) {
 				info = cached.info;
 				loading = false;
 			}
 		}
 		try {
 			let fresh = await api.page(pageUrl);
-			// Opening the popup saves the page; the buttons then undo or refine.
-			if (!fresh.mine && !fresh.unsupported) {
+			// Opening the popup saves the page — but not where highlights are off, so checking a
+			// page in an app you never read never publishes it. Save there takes a click.
+			if (!fresh.mine && !fresh.unsupported && site?.on) {
 				await api.save({ url: pageUrl, title: tab?.title });
 				fresh = await api.page(pageUrl);
 				notifyPage();
@@ -50,6 +81,27 @@
 		} finally {
 			loading = false;
 		}
+	}
+
+	// The content script knows whether the page itself looks like an app; only fall back to
+	// the URL-only verdict when it isn't there to ask.
+	async function loadSite() {
+		if (!pageUrl || !host) return;
+		sitePref = await getSitePref(host);
+		const asked = tab?.id
+			? ((await browser.tabs
+					.sendMessage(tab.id, { type: 'george:site-state' } satisfies Message)
+					.catch(() => null)) as SiteStateResponse | null)
+			: null;
+		site = asked ?? (await siteVerdictForUrl(pageUrl));
+	}
+
+	/** `undefined` hands the host back to the automatic gate. */
+	async function setSite(on: boolean | undefined) {
+		if (!host) return;
+		await setSitePref(host, on);
+		notifyPage();
+		await loadSite();
 	}
 
 	function notifyPage() {
@@ -110,7 +162,9 @@
 		<div class="title" title={tab?.title}>{tab?.title ?? pageUrl}</div>
 		<div class="muted">{new URL(pageUrl).hostname.replace(/^www\./, '')}</div>
 
-		{#if loading && !info}
+		{#if blocked}
+			<div class="row muted">{explainVerdict(host ?? '', site!)}</div>
+		{:else if loading && !info}
 			<div class="row muted">Saving…</div>
 		{:else if info?.mine}
 			<div class="row">
@@ -148,6 +202,18 @@
 				</section>
 			{/if}
 		{/if}
+		{#if site && host && !blocked}
+			<section>
+				<div class="row">
+					<span class="muted">Highlights here</span>
+					<button aria-pressed={sitePref === true} onclick={() => setSite(true)}>On</button>
+					<button aria-pressed={sitePref === false} onclick={() => setSite(false)}>Off</button>
+					<button aria-pressed={sitePref === undefined} onclick={() => setSite(undefined)}>Auto</button>
+				</div>
+				<div class="muted">{explainVerdict(host, site)}</div>
+			</section>
+		{/if}
+
 		<section class="muted">
 			<a href="{appUrl}/" target="_blank" rel="noopener">feed</a> ·
 			<a href="{appUrl}/me" target="_blank" rel="noopener">my links</a> ·
