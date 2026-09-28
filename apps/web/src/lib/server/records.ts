@@ -1,8 +1,9 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { normalizeUrl, urlHash } from '@george/shared';
 import { db } from '$lib/server/db';
-import { comment, follow, highlight, link, user } from '$lib/server/db/schema';
+import { comment, follow, highlight, invite, link, user } from '$lib/server/db/schema';
 import { newId, now } from '$lib/server/ids';
+import { inviteTree } from '$lib/server/invites';
 import { canSeeSubject } from '$lib/server/queries';
 
 export type LinkInput = {
@@ -149,4 +150,21 @@ export function updateProfile(
 	input: { displayName?: string | null; description?: string | null; website?: string | null }
 ): void {
 	db.update(user).set(input).where(eq(user.id, userId)).run();
+}
+
+/**
+ * Deletes a user and everything they made, optionally with their invite tree.
+ * FK cascades and the comment triggers remove the rest. Admins can't be deleted.
+ */
+export function deleteUsers(rootId: string, withInvitees: boolean): { deleted: string[] } | { error: string } {
+	return db.transaction(() => {
+		const ids = [rootId, ...(withInvitees ? inviteTree(rootId).map((u) => u.id) : [])];
+		const targets = db.select({ id: user.id, username: user.username, isAdmin: user.isAdmin }).from(user).where(inArray(user.id, ids)).all();
+		if (!targets.some((t) => t.id === rootId)) return { error: 'No such user' };
+		const admin = targets.find((t) => t.isAdmin);
+		if (admin) return { error: `${admin.username} is an admin` };
+		db.delete(invite).where(inArray(invite.createdBy, ids)).run();
+		db.delete(user).where(inArray(user.id, ids)).run();
+		return { deleted: targets.map((t) => t.username) };
+	});
 }

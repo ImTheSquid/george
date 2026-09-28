@@ -8,6 +8,8 @@ export const user = sqliteTable('user', {
 	website: text(),
 	curiusUserLink: text(),
 	isAdmin: integer({ mode: 'boolean' }).notNull().default(false),
+	// Invite codes this user may create; null = config.inviteQuotaDefault.
+	inviteQuota: integer(),
 	createdAt: text().notNull()
 });
 
@@ -130,6 +132,7 @@ export const highlight = sqliteTable(
 	]
 );
 
+// Triggers in drizzle/0005_no_orphan_comments.sql delete comments whose subject is deleted.
 export const comment = sqliteTable(
 	'comment',
 	{

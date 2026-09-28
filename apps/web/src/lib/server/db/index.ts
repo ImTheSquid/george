@@ -11,6 +11,7 @@ mkdirSync(dirname(resolve(config.databaseUrl)), { recursive: true });
 const client = new Database(config.databaseUrl);
 client.pragma('journal_mode = WAL');
 client.pragma('foreign_keys = ON');
+client.pragma('recursive_triggers = ON');
 
 export const db = drizzle(client, { schema, casing: 'snake_case' });
 

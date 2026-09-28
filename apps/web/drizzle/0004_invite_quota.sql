@@ -1,0 +1,1 @@
+ALTER TABLE `user` ADD `invite_quota` integer;
