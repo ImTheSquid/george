@@ -1,11 +1,9 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { page } from '$app/state';
+	import InviteTable from '$lib/components/InviteTable.svelte';
 
 	let { data, form } = $props();
-
-	function signupLink(code: string) {
-		return `${data.appUrl}/signup?invite=${code}`;
-	}
 </script>
 
 <svelte:head>
@@ -14,35 +12,69 @@
 
 <h1>Invite codes</h1>
 
+{#if form?.message}<p class:error={page.status >= 400}>{form.message}</p>{/if}
+
 <form method="POST" action="?/create" use:enhance class="row">
 	<label>Uses <input type="number" name="maxUses" value="1" min="1" max="1000" style="width:5rem" /></label>
 	<button>New invite code</button>
 </form>
-{#if form?.message}<p class="error">{form.message}</p>{/if}
+
+<InviteTable invites={data.invites} appUrl={data.appUrl} />
+
+<h2>Users</h2>
 
 <table>
-	<thead><tr><th>Code</th><th>Uses</th><th>Status</th><th>Created</th><th></th></tr></thead>
+	<thead><tr><th>User</th><th>Used</th><th>Quota</th><th></th></tr></thead>
 	<tbody>
-		{#each data.invites as i (i.code)}
-			<tr class:dim={i.status !== 'active'}>
+		{#each data.users as u (u.id)}
+			<tr>
 				<td>
-					<code>{i.code}</code>
-					{#if i.status === 'active'}
-						<button class="link muted" onclick={() => navigator.clipboard.writeText(signupLink(i.code))}>copy link</button>
-					{/if}
+					{u.username}
+					{#if u.isAdmin}<span class="muted">admin</span>{/if}
+				</td>
+				<td>{u.used}/{u.quota ?? 'unlimited'}</td>
+				<td>
+					<form method="POST" action="?/setQuota" use:enhance class="row">
+						<input type="hidden" name="id" value={u.id} />
+						<label>
+							Quota (blank for default {data.quotaDefault})
+							<input
+								type="number"
+								name="quota"
+								min="0"
+								max="1000"
+								value={u.inviteQuota ?? ''}
+								placeholder={String(data.quotaDefault)}
+								style="width:5rem"
+							/>
+						</label>
+						<button class="link">save</button>
+					</form>
 				</td>
 				<td>
-					{i.uses}/{i.maxUses}
-					{#if i.usedBy.length}<span class="muted">({i.usedBy.join(', ')})</span>{/if}
-				</td>
-				<td>{i.status}</td>
-				<td class="muted">{new Date(i.createdAt).toLocaleDateString()}</td>
-				<td>
-					{#if i.status === 'active'}
-						<form method="POST" action="?/revoke" use:enhance>
-							<input type="hidden" name="code" value={i.code} />
-							<button class="link">revoke</button>
-						</form>
+					<form method="POST" action="?/revokeAll" use:enhance>
+						<input type="hidden" name="id" value={u.id} />
+						<button class="link">revoke all codes</button>
+					</form>
+					{#if !u.isAdmin}
+						<details>
+							<summary>delete</summary>
+							<form method="POST" action="?/deleteUser" use:enhance>
+								<input type="hidden" name="id" value={u.id} />
+								{#if u.invitees.length}
+									<label>
+										<input type="checkbox" name="withInvitees" />
+										also delete the {u.invitees.length}
+										{u.invitees.length === 1 ? 'user' : 'users'} they invited: {u.invitees.join(', ')}
+									</label>
+								{/if}
+								<label>
+									Type {u.username} to confirm
+									<input type="text" name="confirm" autocomplete="off" />
+								</label>
+								<button class="error">delete permanently</button>
+							</form>
+						</details>
 					{/if}
 				</td>
 			</tr>
@@ -63,11 +95,10 @@
 		border-bottom: 1px solid var(--line);
 		vertical-align: top;
 	}
-	.dim {
-		color: var(--muted);
-	}
-	button.link.muted {
-		margin-left: 0.5rem;
-		font-size: 0.85em;
+	details form {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.3rem;
 	}
 </style>
