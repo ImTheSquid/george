@@ -11,6 +11,6 @@ export const config = {
 	databaseUrl: process.env.DATABASE_URL ?? env.DATABASE_URL ?? 'data/george.db',
 	inviteRequired: env.INVITE_REQUIRED !== '0',
 	/** Invite codes each non-admin may create unless an admin overrides it. */
-	inviteQuotaDefault: Math.max(0, Math.floor(Number(env.INVITE_QUOTA_DEFAULT ?? 0)) || 0),
+	inviteQuotaDefault: Math.max(0, Math.floor(Number(env.INVITE_QUOTA_DEFAULT ?? 5)) || 0),
 	isDev: /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(appUrl)
 };
